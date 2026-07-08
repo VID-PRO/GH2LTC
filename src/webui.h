@@ -30,6 +30,7 @@ public:
     void onSetMatrixEnabled(MatrixToggleCallback cb) { _matrixCb = cb; }
 
     bool matrixEnabled() const { return _matrixEnabled; }
+    uint8_t brightness() const { return _brightness; }
     bool autoFps() const { return _autoFps; }
 
     // Accessors for the config dump / web UI
