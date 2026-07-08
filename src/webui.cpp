@@ -1020,10 +1020,20 @@ html,body{
     x.send();
   }
   loadBrightness();
+  var brightnessPending=null;
   brightnessSlider.addEventListener('input',function(){
     brightnessVal.textContent=this.value;
+    if(brightnessPending)clearTimeout(brightnessPending);
+    var v=this.value;
+    brightnessPending=setTimeout(function(){
+      var x=new XMLHttpRequest();
+      x.open('POST','/api/brightness',true);
+      x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
+      x.send('val='+v);
+    },50);
   });
   brightnessSlider.addEventListener('change',function(){
+    if(brightnessPending)clearTimeout(brightnessPending);
     var x=new XMLHttpRequest();
     x.open('POST','/api/brightness',true);
     x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');

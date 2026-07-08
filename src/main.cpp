@@ -246,7 +246,11 @@ void setup() {
         mx7219.setIntensity(val);
     });
     webui.onSetMatrixEnabled([](bool en) {
-        if (!en) mx7219.clear();
+        if (en) {
+            mx7219.showTimecode(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
+        } else {
+            mx7219.clear();
+        }
     });
 #endif
 

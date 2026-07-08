@@ -30,12 +30,12 @@ jobs:
       - name: Upload firmware to release
         run: |
           gh release upload "${{ github.ref_name }}" \
-            .pio/build/master/firmware.bin \
-            .pio/build/master/bootloader.bin \
-            .pio/build/master/partitions.bin \
-            .pio/build/slave/firmware.bin \
-            .pio/build/slave/bootloader.bin \
-            .pio/build/slave/partitions.bin \
+            .pio/build/master/firmware.bin:master-firmware.bin \
+            .pio/build/master/bootloader.bin:master-bootloader.bin \
+            .pio/build/master/partitions.bin:master-partitions.bin \
+            .pio/build/slave/firmware.bin:slave-firmware.bin \
+            .pio/build/slave/bootloader.bin:slave-bootloader.bin \
+            .pio/build/slave/partitions.bin:slave-partitions.bin \
             --clobber
         env:
           GH_TOKEN: ${{ github.token }}
