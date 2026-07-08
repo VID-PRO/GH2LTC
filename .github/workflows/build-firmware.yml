@@ -1,0 +1,38 @@
+name: Build firmware
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Build master
+        run: pio run -e master
+
+      - name: Build slave
+        run: pio run -e slave
+
+      - name: Upload firmware to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            .pio/build/master/firmware.bin
+            .pio/build/master/bootloader.bin
+            .pio/build/master/partitions.bin
+            .pio/build/slave/firmware.bin
+            .pio/build/slave/bootloader.bin
+            .pio/build/slave/partitions.bin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
