@@ -96,15 +96,11 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 1. Install [PlatformIO CLI](https://platformio.org/install/cli) (or VS Code extension).
 2. From project root:
 
-   **Master** (HDMI + LTC + BLE server):
    ```
-   pio run -e master -t upload
+   pio run -t upload
    ```
 
-   **Slave** (BLE client, no HDMI):
-   ```
-   pio run -e slave -t upload
-   ```
+   The same firmware supports both Master and Slave roles — switch between them at runtime via the web UI Settings panel.
 
    Monitor:
    ```
@@ -113,59 +109,47 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 
 ### Flashing from Pre-built Binaries
 
-Download the latest `firmware` artifact from [GitHub Releases](https://github.com/VID-PRO/GH2LTC/releases). Each release contains six files — you need **three** per board.
+Download the latest `firmware` artifact from [GitHub Releases](https://github.com/VID-PRO/GH2LTC/releases).
 
 **Using `esptool.py`** (install via `pip install esptool`):
-
-**Master** (HDMI + LTC + BLE server):
 ```
 esptool.py --chip esp32c3 --port /dev/ttyUSB0 write_flash \
-  0x0 master-bootloader.bin \
-  0x8000 master-partitions.bin \
-  0x10000 master-firmware.bin
-```
-
-**Slave** (BLE client, no HDMI):
-```
-esptool.py --chip esp32c3 --port /dev/ttyUSB0 write_flash \
-  0x0 slave-bootloader.bin \
-  0x8000 slave-partitions.bin \
-  0x10000 slave-firmware.bin
+  0x0 bootloader.bin \
+  0x8000 partitions.bin \
+  0x10000 firmware.bin
 ```
 
 > Replace `/dev/ttyUSB0` with your port (`COM3` on Windows, `/dev/cu.usbmodem*` on macOS).
 
 **Using PlatformIO** (when you have the source):
 ```
-pio run -e master -t upload      # Master
-pio run -e slave -t upload       # Slave
+pio run -t upload
 ```
 
 **First-time driver note (ESP32-C3 Super Mini):**  
 On macOS/Linux the USB serial (CDC) should appear automatically. On Windows you may need a [CP210x or CH340 driver](https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers) depending on your board's UART bridge.
 
-### Env Comparison
+### Features by Mode
 
-| | `master` | `slave` |
+| | Master | Slave |
 |---|---|---|
 | HDMI (TC358743) | ✓ | — |
 | RTC (DS3231) | ✓ | — |
 | OLED (SSD1306) | ✓ | — |
 | MAX7219 matrix | ✓ | ✓ |
-| Web UI | ✓ | ✓ (no logo) |
+| Web UI | ✓ | ✓ |
 | BLE | Server (advertise, notify) | Client (scan, connect, subscribe) |
 | LTC output | ✓ | ✓ |
-| Partition scheme | `no_ota` (2 MB app) | `no_ota` (2 MB app) |
+
+The role is selected at runtime via the web UI Settings panel and saved to NVS.
 
 ### Project Layout
 
 ```
 platformio.ini
 src/config.h                  pin assignments, feature toggles
-src/config_master.h           includes config.h, defines BLE_MASTER (force-included in env:master via -include)
-src/config_slave.h            includes config.h, defines BLE_SLAVE, disables HDMI/RTC/OLED (force-included in env:slave)
-src/main.cpp                  master entry point: HDMI → LTC + BLE server
-src/slave_main.cpp            slave entry point: BLE client → LTC + MAX7219 + web UI
+src/config_dual.h             includes config.h, enables runtime mode switching (force-included via -include)
+src/main.cpp                  unified entry point: dispatches to master or slave logic based on runtime mode
 src/webui.{h,cpp}             WiFi AP/STA, HTTP server, NVS, embedded JS/CSS/HTML
 src/ble_timecode.{h,cpp}      BLE master (server/advertise/notify) & slave (scan/select/connect/subscribe)
 src/ltc_encoder.{h,cpp}       esp_timer-based SMPTE-12M LTC generator
@@ -174,27 +158,20 @@ src/panasonic_tc.h            <-- fill in your GH5 timecode byte layout here
 src/tc358743.{h,cpp}          minimal I2C driver + bitBangProbe()
 src/oled_display.{h,cpp}      optional SSD1306 via U8g2
 src/ds3231.{h,cpp}            optional RTC driver
-src/logo_data.h               PROGMEM byte array for logo.png (excluded on BLE_SLAVE)
+src/logo_data.h               PROGMEM byte array for logo.png
 ```
 
 ---
 
 ## WiFi
 
-### Master
-
 | Scenario | Behavior |
 |----------|----------|
-| No WiFi configured | Opens AP `TC-LTC-GENERATOR` (open, `192.168.4.1`) |
+| No WiFi configured | Opens AP `GH2LTC_XXXX` (open, `192.168.4.1`) where XXXX = last 4 MAC digits |
 | Saved credentials exist | Connects as STA on boot; AP auto-disables on connect |
 | STA disconnected >5 s | AP re-enabled for reconfiguration |
 
-### Slave
-
-| Scenario | Behavior |
-|----------|----------|
-| Default | Opens AP `TC-LTC-SLAVE` (open, `192.168.4.1`) |
-| STA configured | Same auto-STA / auto-AP logic as master |
+The AP SSID is `GH2LTC_` + last 4 MAC hex digits by default. If you set a custom BLE name via the web UI, the AP SSID uses that name instead.
 
 ---
 
@@ -217,15 +194,15 @@ Open `http://192.168.4.1` (AP mode) or the ESP's STA IP. The header displays a c
 
 ## Configuration Defaults
 
-| Setting | Master | Slave |
-|---------|--------|-------|
-| WiFi AP SSID | TC-LTC-GENERATOR | TC-LTC-SLAVE |
+| Setting | Master (HDMI + BLE server) | Slave (BLE client, no HDMI) |
+|---------|---------------------------|-----------------------------|
+| WiFi AP SSID | `GH2LTC_` + last 4 MAC digits | same |
 | WiFi AP security | Open | Open |
 | FPS | Auto (re-detect) | 25 |
 | Drop frame | Off | Off |
 | RTC | Optional (DS3231) | — |
 | OLED | Optional (SSD1306) | — |
-| MAX7219 matrix | Optional (compile-time), enabled by default | Optional (compile-time), enabled by default |
+| MAX7219 matrix | Enabled by default | Enabled by default |
 | Matrix brightness | 4 (0–15) | 4 |
 | Matrix enabled | true (runtime) | true (runtime) |
 | LTC output pin | GPIO6 | GPIO6 |
@@ -246,12 +223,13 @@ The slave runs its own independent LTC generator, MAX7219 matrix, and web UI —
 
 ### Role selection
 
-Each PlatformIO environment force-includes the corresponding config header at compile time via `-include` (no `-D` flags in `build_flags`):
+The role is selected at runtime from the web UI Settings panel and persisted in NVS. The single firmware (`env:dual`) includes all code paths; the active one is chosen at boot based on the saved mode.
 
-| Role | Config header | Environment |
-|------|--------------|-------------|
-| Master | `src/config_master.h` | `env:master` |
-| Slave  | `src/config_slave.h`  | `env:slave` |
+To switch modes:
+1. Connect to the web UI (`http://192.168.4.1` or the ESP's STA IP).
+2. Open Settings (gear icon).
+3. Tap **Master** or **Slave** under Device Mode.
+4. The device reboots into the selected mode.
 
 ---
 

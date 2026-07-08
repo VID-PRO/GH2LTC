@@ -1,5 +1,5 @@
 #include "webui.h"
-#ifndef BLE_SLAVE
+#if !defined(BLE_SLAVE) || defined(BLE_MODE_RUNTIME)
 #include "logo_data.h"
 #endif
 #include "ble_timecode.h"
@@ -55,7 +55,8 @@ void WebUI::begin(const char *apSsid, const char *apPassword,
     _server.on("/api/matrix",    HTTP_ANY, std::bind(&WebUI::handleApiMatrix,    this));
     _server.on("/api/wifi",  HTTP_ANY,  std::bind(&WebUI::handleApiWifi,  this));
     _server.on("/api/ble",   HTTP_ANY,  std::bind(&WebUI::handleApiBle,   this));
-#ifndef BLE_SLAVE
+    _server.on("/api/mode",  HTTP_ANY,  std::bind(&WebUI::handleApiMode,  this));
+#if !defined(BLE_SLAVE) || defined(BLE_MODE_RUNTIME)
     _server.on("/logo.png",            std::bind(&WebUI::handleLogo,    this));
 #endif
     _server.onNotFound(      std::bind(&WebUI::handleNotFound, this));
@@ -435,11 +436,44 @@ void WebUI::handleApiBle() {
 #endif
 }
 
-#ifndef BLE_SLAVE
+// -----------------------------------------------------------------------
+// GET/POST /api/mode  — get/set device mode (master/slave)
+// -----------------------------------------------------------------------
+void WebUI::handleApiMode() {
+#if defined(BLE_MODE_RUNTIME)
+    if (_server.method() == HTTP_POST) {
+        String modeStr = _server.arg("mode");
+        int newMode = modeStr.toInt();
+        if (newMode == BLE_MODE_MASTER || newMode == BLE_MODE_SLAVE) {
+            bleSetMode(newMode);
+            _server.send(200, "application/json", "{\"ok\":true,\"reboot\":true}");
+            return;
+        }
+        _server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid mode\"}");
+        return;
+    }
+    int mode = bleGetMode();
+    char body[64];
+    snprintf(body, sizeof(body), "{\"mode\":%d,\"modeName\":\"%s\"}",
+             mode, mode == BLE_MODE_MASTER ? "master" : "slave");
+    _server.send(200, "application/json", body);
+#else
+#if defined(BLE_MASTER)
+    _server.send(200, "application/json", "{\"mode\":1,\"modeName\":\"master\",\"locked\":true}");
+#else
+    _server.send(200, "application/json", "{\"mode\":2,\"modeName\":\"slave\",\"locked\":true}");
+#endif
+#endif
+}
+
+#if !defined(BLE_SLAVE) || defined(BLE_MODE_RUNTIME)
 // -----------------------------------------------------------------------
 // GET /logo.png  — serve the logo image from PROGMEM
 // -----------------------------------------------------------------------
 void WebUI::handleLogo() {
+#if defined(BLE_MODE_RUNTIME)
+    if (bleGetMode() != BLE_MODE_MASTER) { handleNotFound(); return; }
+#endif
     _server.setContentLength(logo_png_len);
     _server.send(200, "image/png", "");
     _server.sendContent_P((PGM_P)logo_png, logo_png_len);
@@ -589,12 +623,10 @@ html,body{
   color:#555;font-size:22px;
   display:flex;align-items:center;justify-content:center;
   cursor:pointer;transition:.2s;
-  z-index:11;
   -webkit-user-select:none;user-select:none
 }
-.settings-btn:hover,.settings-btn.active{
-  background:#222;color:#00ffbb;border-color:#00ffbb
-}
+.settings-btn:hover{background:#222;color:#00ffbb;border-color:#00ffbb}
+.settings-btn.active{background:#222;color:#00ffbb;border-color:#00ffbb}
 
 /* ── settings panel ── */
 .settings-panel{
@@ -602,7 +634,7 @@ html,body{
   background:#111;border-top:1px solid #222;
   padding:20px 24px 28px;
   transform:translateY(100%);transition:transform .3s ease;
-  z-index:10;
+  z-index:12;
   max-height:70vh;overflow-y:auto
 }
 .settings-panel.open{transform:translateY(0)}
@@ -610,6 +642,16 @@ html,body{
   color:#444;font-size:11px;text-transform:uppercase;
   letter-spacing:.15em;margin-bottom:16px
 }
+.panel-close{
+  position:absolute;top:12px;right:12px;
+  width:36px;height:36px;border-radius:50%;
+  background:transparent;border:1px solid #333;
+  color:#555;font-size:16px;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;transition:.2s;
+  -webkit-user-select:none;user-select:none
+}
+.panel-close:hover{color:#00ffbb;border-color:#00ffbb}
 .setting-row{
   display:flex;align-items:center;gap:12px;
   margin-bottom:14px;flex-wrap:wrap
@@ -815,6 +857,7 @@ html,body{
 </div>
 
 <div class="settings-panel" id="settings-panel">
+  <div class="panel-close" onclick="toggleSettings()">&#10005;</div>
   <div class="settings-title">Generator Settings</div>
 
   <div class="setting-row">
@@ -896,44 +939,55 @@ html,body{
     AP <span>__AP_SSID__</span> &nbsp;|&nbsp; <span>__AP_IP__</span><br>
     STA <span>__STA_SSID__</span> &nbsp;|&nbsp; <span>__STA_IP__</span>
   </div>
-  <div class="ble-drawer-section">
-)rawliteral"));
-
-    // Part 2: BLE drawer HTML content (role-specific)
-#ifndef BLE_SLAVE
-    html += String(F(R"rawliteral(  <div class="settings-title">BLE Setup</div>
-  <div class="ble-form">
-    <div class="row">
-      <input type="text" id="ble-name-input" value="" maxlength="32">
-      <button onclick="bleSetName()">Save Name</button>
-      <button class="wifi-forget-btn" onclick="bleDisconnectAll()">Disconnect All</button>
-    </div>
-    <div id="ble-peers"></div>
-    <div class="ble-msg" id="ble-msg"></div>
-  </div>
-)rawliteral"));
-#else
-    html += String(F(R"rawliteral(  <div class="settings-title">BLE Setup</div>
-  <div class="ble-form">
-    <div class="row">
-      <input type="text" id="ble-name-input" value="" maxlength="32">
-      <button onclick="bleSetName()">Save Name</button>
+  <!-- Mode Switch (dual-mode builds only) -->
+  <div id="mode-section" class="ble-drawer-section">
+    <div class="settings-title">Device Mode</div>
+    <div class="setting-row">
+      <div style="display:flex;gap:8px">)rawliteral"));
+    {
+        int curMode = bleGetMode();
+        html += "<button id=\"mode-master-btn\" class=\"fps-btn" + String(curMode == BLE_MODE_MASTER ? " active" : "") + "\" data-mode=\"1\" onclick=\"switchMode(1)\">Master</button>";
+        html += "<button id=\"mode-slave-btn\" class=\"fps-btn" + String(curMode == BLE_MODE_SLAVE ? " active" : "") + "\" data-mode=\"2\" onclick=\"switchMode(2)\">Slave</button>";
+    }
+    html += String(F(R"rawliteral(      </div>
+      <div style="margin-left:auto;color:#444;font-size:clamp(9px,1.5vw,11px)" id="mode-msg"></div>
     </div>
   </div>
-  <div class="ble-status">
-    Status: <span id="ble-status">—</span>
-  </div>
-  <div class="ble-form">
-    <button onclick="bleScan()" id="ble-scan-btn">Scan</button>
-    <div class="ble-msg" id="ble-msg"></div>
-  </div>
-  <div id="ble-results"></div>
-)rawliteral"));
-#endif
 
-    // Part 3: everything from closing the drawer-section through common JS (up to __BLE_JS__)
-    html += String(F(R"rawliteral(  </div>
-</div>
+  <div class="ble-drawer-section" id="ble-section-master">
+    <div class="settings-title">BLE Setup &mdash; Master</div>
+    <div class="ble-form">
+      <div class="row">
+        <input type="text" id="ble-name-input" value="" maxlength="32">
+        <button onclick="bleSetName()">Save Name</button>
+        <button class="wifi-forget-btn" onclick="bleDisconnectAll()">Disconnect All</button>
+      </div>
+      <div id="ble-peers"></div>
+      <div class="ble-msg" id="ble-msg-master"></div>
+    </div>
+  </div>
+
+  <div class="ble-drawer-section" id="ble-section-slave" style="display:none">
+    <div class="settings-title">BLE Setup &mdash; Slave</div>
+    <div class="ble-form">
+      <div class="row">
+        <input type="text" id="ble-slave-name-input" value="" maxlength="32">
+        <button onclick="bleSetName()">Save Name</button>
+      </div>
+    </div>
+    <div class="ble-status">
+      Status: <span id="ble-status">—</span>
+    </div>
+    <div class="ble-form">
+      <button onclick="bleScan()" id="ble-scan-btn">Scan</button>
+      <div class="ble-msg" id="ble-msg-slave"></div>
+    </div>
+    <div id="ble-results"></div>
+  </div>
+)rawliteral"));
+
+    // Part 3: close settings-panel and common JS
+    html += String(F(R"rawliteral(</div>
 
 <script>
 (function(){
@@ -1152,10 +1206,91 @@ function wifiForget(){
 }
 )rawliteral"));
 
-    // Part 4: BLE JS (role-specific)
-#ifndef BLE_SLAVE
-    html += String(F(R"rawliteral(function bleSetName(){
-  var n=document.getElementById('ble-name-input').value;
+    // Part 4: BLE JS and Mode JS (unified for all builds)
+    html += String(F(R"rawliteral(
+// ===== Mode switching =====
+var currentMode=1; // BLE_MODE_MASTER=1, BLE_MODE_SLAVE=2
+var modeLocked=false;
+
+function pollMode(){
+  var x=new XMLHttpRequest();
+  x.open('GET','/api/mode',true);
+  x.onload=function(){
+    if(x.status!=200)return;
+    try{
+      var d=JSON.parse(x.responseText);
+      currentMode=d.mode;
+      modeLocked=d.locked||false;
+      updateModeUI();
+      updateBleSectionVisibility();
+    }catch(e){}
+  };
+  x.send();
+}
+
+function switchMode(mode){
+  if(modeLocked)return;
+  var prevMode=currentMode;
+  currentMode=mode;
+  updateModeUI();
+  var msgEl=document.getElementById('mode-msg');
+  msgEl.textContent='Switching...';
+  var x=new XMLHttpRequest();
+  x.open('POST','/api/mode',true);
+  x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
+  x.onload=function(){
+    if(x.status==200){
+      msgEl.textContent='Saved. Rebooting...';
+      setTimeout(function(){location.reload()},2000);
+    }else{
+      currentMode=prevMode;
+      updateModeUI();
+      msgEl.textContent='Error';
+    }
+  };
+  x.send('mode='+mode);
+}
+
+function updateModeUI(){
+  var mBtn=document.getElementById('mode-master-btn');
+  var sBtn=document.getElementById('mode-slave-btn');
+  if(!mBtn||!sBtn)return;
+  if(currentMode===1){mBtn.classList.add('active');sBtn.classList.remove('active')}
+  else{mBtn.classList.remove('active');sBtn.classList.add('active')}
+  if(modeLocked){
+    mBtn.style.opacity='0.5';mBtn.style.pointerEvents='none';
+    sBtn.style.opacity='0.5';sBtn.style.pointerEvents='none';
+  }else{
+    mBtn.style.opacity='1';mBtn.style.pointerEvents='';
+    sBtn.style.opacity='1';sBtn.style.pointerEvents='';
+  }
+  var msgEl=document.getElementById('mode-msg');
+  if(msgEl)msgEl.textContent=modeLocked?'Fixed by build':'';
+}
+
+function updateBleSectionVisibility(){
+  var masterSec=document.getElementById('ble-section-master');
+  var slaveSec=document.getElementById('ble-section-slave');
+  if(!masterSec)return;
+  masterSec.style.display=(currentMode===1)?'':'none';
+  slaveSec.style.display=(currentMode===2)?'':'none';
+}
+
+// ===== Mode switch visibility =====
+(function(){
+  var modeSection=document.getElementById('mode-section');
+  if(modeSection){
+    var isDual=typeof modeLocked!=='undefined';
+    modeSection.style.display='block';
+  }
+})();
+
+// ===== BLE functions (work for both modes) =====
+function bleSetName(){
+  var isMaster=currentMode===1;
+  var el=document.getElementById(isMaster?'ble-name-input':'ble-slave-name-input');
+  var msgEl=document.getElementById(isMaster?'ble-msg-master':'ble-msg-slave');
+  var n=el?el.value:'';
   if(!n)return;
   var x=new XMLHttpRequest();
   x.open('POST','/api/ble',true);
@@ -1164,44 +1299,49 @@ function wifiForget(){
     if(x.status==200){
       var d=JSON.parse(x.responseText);
       if(d.reboot){
-        document.getElementById('ble-msg').textContent='Saved. Rebooting...';
+        if(msgEl)msgEl.textContent='Saved. Rebooting...';
         setTimeout(function(){location.reload()},2000);
-      } else document.getElementById('ble-msg').textContent='OK';
+      } else if(msgEl)msgEl.textContent='OK';
     } else {
-      try{document.getElementById('ble-msg').textContent=JSON.parse(x.responseText).error}
-      catch(e){document.getElementById('ble-msg').textContent='Error'}
+      try{if(msgEl)msgEl.textContent=JSON.parse(x.responseText).error}
+      catch(e){if(msgEl)msgEl.textContent='Error'}
     }
   };
   x.send('action=setname&name='+encodeURIComponent(n));
 }
+
 function bleDisconnectAll(){
+  var msgEl=document.getElementById('ble-msg-master');
   var x=new XMLHttpRequest();
   x.open('POST','/api/ble',true);
   x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
   x.onload=function(){if(x.status==200){
-    document.getElementById('ble-msg').textContent='Disconnected all';
+    if(msgEl)msgEl.textContent='Disconnected all';
     pollBleMaster();
   }};
   x.send('action=disconnect');
 }
+
 function bleDisconnectPeer(addr){
+  var msgEl=document.getElementById('ble-msg-master');
   var x=new XMLHttpRequest();
   x.open('POST','/api/ble',true);
   x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
   x.onload=function(){if(x.status==200){
-    document.getElementById('ble-msg').textContent='Disconnected '+addr;
+    if(msgEl)msgEl.textContent='Disconnected '+addr;
     pollBleMaster();
   }};
   x.send('action=disconnect_peer&address='+encodeURIComponent(addr));
 }
+
 function pollBleMaster(){
+  var el=document.getElementById('ble-peers');
+  if(!el)return;
   var x=new XMLHttpRequest();
   x.open('GET','/api/ble',true);
   x.onload=function(){
     if(x.status!=200)return;
     try{var d=JSON.parse(x.responseText);
-    var el=document.getElementById('ble-peers');
-    if(!el)return;
     var h='';
     if(d.peers&&d.peers.length){
       h='<div class="ble-subtitle">Connected Peers</div>';
@@ -1219,52 +1359,19 @@ function pollBleMaster(){
   };
   x.send();
 }
-setInterval(pollBleMaster,3000);
 
-(function(){
-  var x=new XMLHttpRequest();
-  x.open('GET','/api/ble',true);
-  x.onload=function(){
-    if(x.status!=200)return;
-    try{var d=JSON.parse(x.responseText);
-    var el=document.getElementById('ble-name-input');
-    if(el) el.value=d.name;
-    }catch(e){}
-  };
-  x.send();
-})();
-)rawliteral"));
-#else
-    html += String(F(R"rawliteral(function bleSetName(){
-  var n=document.getElementById('ble-name-input').value;
-  if(!n)return;
-  var x=new XMLHttpRequest();
-  x.open('POST','/api/ble',true);
-  x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
-  x.onload=function(){
-    if(x.status==200){
-      var d=JSON.parse(x.responseText);
-      if(d.reboot){
-        document.getElementById('ble-msg').textContent='Saved. Rebooting...';
-        setTimeout(function(){location.reload()},2000);
-      } else document.getElementById('ble-msg').textContent='OK';
-    } else {
-      try{document.getElementById('ble-msg').textContent=JSON.parse(x.responseText).error}
-      catch(e){document.getElementById('ble-msg').textContent='Error'}
-    }
-  };
-  x.send('action=setname&name='+encodeURIComponent(n));
-}
 function bleScan(){
   var btn=document.getElementById('ble-scan-btn');
-  btn.disabled=true;btn.textContent='Scanning...';
-  document.getElementById('ble-msg').textContent='';
-  document.getElementById('ble-results').innerHTML='';
+  var msgEl=document.getElementById('ble-msg-slave');
+  var resultsEl=document.getElementById('ble-results');
+  if(btn){btn.disabled=true;btn.textContent='Scanning...';}
+  if(msgEl)msgEl.textContent='';
+  if(resultsEl)resultsEl.innerHTML='';
   var x=new XMLHttpRequest();
   x.open('POST','/api/ble',true);
   x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
   x.onload=function(){
-    btn.disabled=false;btn.textContent='Scan';
+    if(btn){btn.disabled=false;btn.textContent='Scan';}
     if(x.status!=200)return;
     var d=JSON.parse(x.responseText);
     var h='';
@@ -1274,50 +1381,67 @@ function bleScan(){
       h+='<button onclick="bleSelect(\''+d.devices[i].address+'\')">Connect</button>';
       h+='</div>';
     }
-    document.getElementById('ble-results').innerHTML=h||'<div class="ble-device">No masters found</div>';
+    if(resultsEl)resultsEl.innerHTML=h||'<div class="ble-device">No masters found</div>';
     pollBleSlave();
   };
   x.send('action=scan');
 }
+
 function bleSelect(addr){
+  var msgEl=document.getElementById('ble-msg-slave');
   var x=new XMLHttpRequest();
   x.open('POST','/api/ble',true);
   x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
   x.onload=function(){if(x.status==200){
-    document.getElementById('ble-msg').textContent='Connecting to '+addr+'...';
+    if(msgEl)msgEl.textContent='Connecting to '+addr+'...';
     pollBleSlave();
     setTimeout(function(){location.reload()},3000);
   }};
   x.send('action=select&address='+encodeURIComponent(addr));
 }
+
 function pollBleSlave(){
+  var el=document.getElementById('ble-status');
+  if(!el)return;
   var x=new XMLHttpRequest();
   x.open('GET','/api/ble',true);
   x.onload=function(){
     if(x.status!=200)return;
     try{var d=JSON.parse(x.responseText);
-    var el=document.getElementById('ble-status');
-    if(el)el.textContent=d.connected?'Connected ('+d.connected_name+')':'Disconnected';
+    el.textContent=d.connected?'Connected ('+d.connected_name+')':'Disconnected';
     }catch(e){}
   };
   x.send();
 }
-setInterval(pollBleSlave,3000);
 
+// ===== Polling =====
+pollMode();
+
+// Poll BLE according to current mode (check every poll)
+var blePollInterval=setInterval(function(){
+  if(currentMode===1){
+    pollBleMaster();
+  }else if(currentMode===2){
+    pollBleSlave();
+  }
+},3000);
+
+// Load initial BLE name
 (function(){
   var x=new XMLHttpRequest();
   x.open('GET','/api/ble',true);
   x.onload=function(){
     if(x.status!=200)return;
     try{var d=JSON.parse(x.responseText);
-    var el=document.getElementById('ble-name-input');
-    if(el) el.value=d.name;
+    var el1=document.getElementById('ble-name-input');
+    if(el1)el1.value=d.name;
+    var el2=document.getElementById('ble-slave-name-input');
+    if(el2)el2.value=d.name;
     }catch(e){}
   };
   x.send();
 })();
 )rawliteral"));
-#endif
 
     // Part 5: closing tags
     html += String(F(R"rawliteral(</script>

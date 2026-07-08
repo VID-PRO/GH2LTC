@@ -76,7 +76,8 @@ private:
     void handleApiMatrix();
     void handleApiWifi();
     void handleApiBle();
-#ifndef BLE_SLAVE
+    void handleApiMode();
+#if !defined(BLE_SLAVE) || defined(BLE_MODE_RUNTIME)
     void handleLogo();
 #endif
     void handleNotFound();

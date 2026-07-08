@@ -21,25 +21,19 @@ jobs:
       - name: Install PlatformIO
         run: pip install platformio
 
-      - name: Build master
-        run: pio run -e master
-
-      - name: Build slave
-        run: pio run -e slave
+      - name: Build firmware
+        run: pio run
 
       - name: Upload firmware binaries to release
         if: github.event_name == 'release'
         run: |
           mkdir -p upload
-          cp .pio/build/master/firmware.bin    upload/master-firmware.bin
-          cp .pio/build/master/bootloader.bin  upload/master-bootloader.bin
-          cp .pio/build/master/partitions.bin  upload/master-partitions.bin
-          cp .pio/build/slave/firmware.bin     upload/slave-firmware.bin
-          cp .pio/build/slave/bootloader.bin   upload/slave-bootloader.bin
-          cp .pio/build/slave/partitions.bin   upload/slave-partitions.bin
+          cp .pio/build/dual/firmware.bin    upload/firmware.bin
+          cp .pio/build/dual/bootloader.bin  upload/bootloader.bin
+          cp .pio/build/dual/partitions.bin  upload/partitions.bin
           gh release upload "${{ github.ref_name }}" upload/* --clobber
           gh release view "${{ github.ref_name }}" --json body --jq .body > existing-notes.md
-          printf '\n---\n\n## Flashing\n\n### Master (HDMI + LTC + BLE server)\n```\nesptool.py --chip esp32c3 --port /dev/ttyUSB0 write_flash \\\n  0x0 master-bootloader.bin \\\n  0x8000 master-partitions.bin \\\n  0x10000 master-firmware.bin\n```\n\n### Slave (BLE client, no HDMI)\n```\nesptool.py --chip esp32c3 --port /dev/ttyUSB0 write_flash \\\n  0x0 slave-bootloader.bin \\\n  0x8000 slave-partitions.bin \\\n  0x10000 slave-firmware.bin\n```\n\nReplace `/dev/ttyUSB0` with your port (`COM3` on Windows, `/dev/cu.usbmodem*` on macOS).\n' >> existing-notes.md
+          printf '\n---\n\n## Flashing\n\n```\nesptool.py --chip esp32c3 --port /dev/ttyUSB0 write_flash \\\n  0x0 bootloader.bin \\\n  0x8000 partitions.bin \\\n  0x10000 firmware.bin\n```\n\nReplace `/dev/ttyUSB0` with your port (`COM3` on Windows, `/dev/cu.usbmodem*` on macOS).\n\nTo switch between Master and Slave mode at runtime, connect to the web UI and change the Device Mode in Settings.\n' >> existing-notes.md
           gh release edit "${{ github.ref_name }}" --notes-file existing-notes.md
         env:
           GH_TOKEN: ${{ github.token }}
@@ -49,9 +43,6 @@ jobs:
         with:
           name: firmware
           path: |
-            .pio/build/master/firmware.bin
-            .pio/build/master/bootloader.bin
-            .pio/build/master/partitions.bin
-            .pio/build/slave/firmware.bin
-            .pio/build/slave/bootloader.bin
-            .pio/build/slave/partitions.bin
+            .pio/build/dual/firmware.bin
+            .pio/build/dual/bootloader.bin
+            .pio/build/dual/partitions.bin

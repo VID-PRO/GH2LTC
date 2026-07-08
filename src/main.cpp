@@ -2,6 +2,7 @@
 #include <esp_wifi.h>
 #include "esp_system.h"
 #include <Preferences.h>
+#include <esp_efuse.h>
 #include "config.h"
 #include "tc358743.h"
 #include "tc358743_regs.h"
@@ -21,9 +22,15 @@
 #endif
 #include "ble_timecode.h"
 
-TC358743 tc(Wire, TC_I2C_ADDR);
-LtcEncoder ltc(LTC_OUT_PIN, LTC_FPS, LTC_DROP_FRAME);
+static int currentBleMode = BLE_MODE_MASTER;
 
+// ---------------------------------------------------------------------------
+// Master-specific globals
+// ---------------------------------------------------------------------------
+#if RTC_ENABLE || !defined(BLE_SLAVE)
+TC358743 tc(Wire, TC_I2C_ADDR);
+#endif
+LtcEncoder ltc(LTC_OUT_PIN, LTC_FPS, LTC_DROP_FRAME);
 static char tcStr[13] = "00:00:00:00";
 
 static void fmtTcStr(uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff) {
@@ -33,8 +40,6 @@ static void fmtTcStr(uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff) {
 #if OLED_ENABLE
 static OledDisplay oled;
 #endif
-
-static bool tcPresent = false;
 
 #if RTC_ENABLE
 static DS3231 rtc(Wire, RTC_I2C_ADDR);
@@ -50,15 +55,18 @@ static WebUI webui;
 #if MAX7219_ENABLE
 static Max7219Display mx7219(MAX7219_DIN_PIN, MAX7219_CS_PIN, MAX7219_CLK_PIN, MAX7219_NUM_MODULES);
 #endif
+
+static bool tcPresent = false;
 static char tcSource[8] = "FREE";
 
+// Master fast-poll constants
 static const unsigned long FAST_POLL_MS = 8;
 unsigned long lastFastPoll = 0;
 unsigned long lastFramePoll = 0;
 unsigned long framePollMs = 1000 / LTC_FPS;
 
 // ---------------------------------------------------------------------------
-// Frame rate auto-detection
+// Frame rate auto-detection (master only)
 // ---------------------------------------------------------------------------
 #if FPS_AUTO_DETECT
 static bool fpsDetected = false;
@@ -103,7 +111,7 @@ static bool tryDetectFps() {
 #endif
 
 // ---------------------------------------------------------------------------
-// Reverse-engineer mode helpers
+// Reverse-engineer mode helpers (master only)
 // ---------------------------------------------------------------------------
 #if REVERSE_ENGINEER_MODE
 void dumpBuffer(const char *label, uint16_t reg, size_t len) {
@@ -151,7 +159,15 @@ void runReverseEngineerDump() {
 #endif
 
 // ---------------------------------------------------------------------------
-// setup()
+// Slave-specific: BLE timecode callback
+// ---------------------------------------------------------------------------
+static void onBleTimecode(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff) {
+    ltc.setTime(hh, mm, ss, ff);
+    ltc.setDd(dd);
+}
+
+// ---------------------------------------------------------------------------
+// Common: print reset reason
 // ---------------------------------------------------------------------------
 static void printResetReason() {
     const char *reason;
@@ -171,25 +187,23 @@ static void printResetReason() {
     Serial.println(reason);
 }
 
-void setup() {
-    Serial.begin(115200);
-    delay(2000);
-    printResetReason();
-
-    pinMode(STATUS_LED_PIN, OUTPUT);
-    digitalWrite(STATUS_LED_PIN, LOW);
-
-    Serial.println(F("GH5 HDMI -> LTC box starting..."));
-    Serial.println();
-
-    // ---- config dump ----
+// ---------------------------------------------------------------------------
+// Common: config dump
+// ---------------------------------------------------------------------------
+static void printConfig() {
     Serial.println(F("── CONFIG ──────────────────────────────"));
+    Serial.print(F("  MODE              "));
+    Serial.println(currentBleMode == BLE_MODE_MASTER ? "MASTER" : "SLAVE");
     Serial.print(F("  LTC_OUT_PIN       ")); Serial.println(LTC_OUT_PIN);
     Serial.print(F("  STATUS_LED_PIN    ")); Serial.println(STATUS_LED_PIN);
     Serial.print(F("  LTC_FPS           ")); Serial.println(LTC_FPS);
     Serial.print(F("  LTC_DROP_FRAME    ")); Serial.println(LTC_DROP_FRAME);
     Serial.print(F("  FPS_AUTO_DETECT   ")); Serial.println(FPS_AUTO_DETECT);
     Serial.print(F("  REVERSE_ENGINEER  ")); Serial.println(REVERSE_ENGINEER_MODE);
+#if defined(BLE_MODE_RUNTIME)
+    Serial.print(F("  HW_PROFILE       FULL (HDMI+RTC+OLED+MAX)"));
+    Serial.println();
+#else
     Serial.print(F("  TC358743 I2C      SDA=")); Serial.print(TC_I2C_SDA_PIN);
     Serial.print(F(" SCL=")); Serial.print(TC_I2C_SCL_PIN);
     Serial.print(F(" ADDR=0x")); Serial.println(TC_I2C_ADDR, HEX);
@@ -202,6 +216,7 @@ void setup() {
         Serial.print(F(" SCL=")); Serial.print(RTC_I2C_SCL_PIN);
         Serial.print(F(" ADDR=0x")); Serial.println(RTC_I2C_ADDR, HEX);
     }
+#endif
 #if WEBUI_ENABLE
     Serial.print(F("  WEBUI_ENABLE      1    AP=")); Serial.print(WEBUI_AP_SSID);
     if (WEBUI_AP_PASSWORD) { Serial.print(F(" (pass)")); }
@@ -214,77 +229,13 @@ void setup() {
 #endif
     Serial.println(F("────────────────────────────────────────"));
     Serial.println();
+}
 
-    // Start WiFi AP + web server BEFORE the LTC timer — the hardware-timer ISR
-    // fires at several kHz and can interfere with WiFi RF calibration if it's
-    // already running during softAP().  Give the WiFi stack a clean window.
-#if WEBUI_ENABLE
-    Serial.print(F("Starting WiFi AP... "));
-    webui.begin(WEBUI_AP_SSID, WEBUI_AP_PASSWORD,
-                WEBUI_STA_SSID, WEBUI_STA_PASSWORD);
-    webui.onSetFps([](uint8_t fps, bool df) {
-        ltc.setFps(fps, df);
-        framePollMs = 1000 / fps;
-        {
-            Preferences prefs;
-            prefs.begin("ltc", false);
-            prefs.putUChar("fps", fps);
-            prefs.putBool("df", df);
-            prefs.end();
-        }
-#if FPS_AUTO_DETECT
-        if (webui.autoFps()) resetFpsDetect();
-#endif
-    });
-    webui.onJamTime([](uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff) {
-        ltc.setTime(hh, mm, ss, ff);
-        ltc.setDd(dd);
-        Serial.printf("jam %02u:%02u:%02u:%02u:%02u\n", dd, hh, mm, ss, ff);
-    });
-#if MAX7219_ENABLE
-    webui.onSetBrightness([](uint8_t val) {
-        mx7219.setIntensity(val);
-    });
-    webui.onSetMatrixEnabled([](bool en) {
-        if (en) {
-            mx7219.showTimecode(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
-        } else {
-            mx7219.clear();
-        }
-    });
-#endif
-
-    // WiFi event logging for AP debugging
-    WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
-        switch (event) {
-            case ARDUINO_EVENT_WIFI_AP_STACONNECTED:
-                Serial.print(F("WiFi: STA connected, MAC="));
-                Serial.printf("%02X:%02X:%02X:%02X:%02X:%02X\n",
-                    info.wifi_ap_staconnected.mac[0],
-                    info.wifi_ap_staconnected.mac[1],
-                    info.wifi_ap_staconnected.mac[2],
-                    info.wifi_ap_staconnected.mac[3],
-                    info.wifi_ap_staconnected.mac[4],
-                    info.wifi_ap_staconnected.mac[5]);
-                break;
-            case ARDUINO_EVENT_WIFI_AP_STADISCONNECTED:
-                Serial.printf("WiFi: STA disconnected, MAC=%02X:%02X:%02X:%02X:%02X:%02X aid=%d\n",
-                    info.wifi_ap_stadisconnected.mac[0],
-                    info.wifi_ap_stadisconnected.mac[1],
-                    info.wifi_ap_stadisconnected.mac[2],
-                    info.wifi_ap_stadisconnected.mac[3],
-                    info.wifi_ap_stadisconnected.mac[4],
-                    info.wifi_ap_stadisconnected.mac[5],
-                    info.wifi_ap_stadisconnected.aid);
-                break;
-            case ARDUINO_EVENT_WIFI_AP_STAIPASSIGNED:
-                Serial.println(F("WiFi: STA got IP"));
-                break;
-        }
-    });
-#endif
-
-    // Load persisted FPS/DF from NVS (set by web UI in a previous session)
+// ===========================================================================
+// Master-specific: I2C/HDMI setup
+// ===========================================================================
+static void masterSetup() {
+    // Load persisted FPS/DF from NVS
     {
         Preferences prefs;
         prefs.begin("ltc", true);
@@ -297,25 +248,17 @@ void setup() {
         }
     }
 
-    // Start LTC encoder AFTER WiFi — the hardware timer ISR is high-frequency
-    // and should not be active during WiFi/softAP initialization.
-    Serial.println(F("Settling..."));
-    delay(500);
-    // DEBUG: skip LTC timer to isolate WiFi interference
-    #ifndef SKIP_LTC_TIMER
+    // Start LTC encoder
+#ifndef SKIP_LTC_TIMER
     Serial.print(F("Starting LTC timer... "));
     ltc.begin();
     ltc.setTime(1, 0, 0, 0);
     Serial.println(F("OK"));
-    #else
+#else
     Serial.println(F("LTC timer SKIPPED (debug)"));
-    #endif
+#endif
 
-    // ---- I2C device detection (non-critical — done after WiFi) ----
-    // NOTE: the I2C peripheral is only initialised when the bit-bang probe
-    // inside tc.begin() finds a device.  When no TC358743 is present the
-    // SDA/SCL pins stay as INPUT_PULLUP (silent) to avoid any noise coupling
-    // into the WiFi radio — all downstream I2C probes (RTC, OLED) are skipped.
+    // I2C device detection
     tcPresent = tc.begin(TC_I2C_SDA_PIN, TC_I2C_SCL_PIN, TC_RESET_PIN);
     if (!tcPresent) {
         Serial.println(F("ERROR: TC358743 not responding — HDMI functions disabled."));
@@ -370,30 +313,21 @@ void setup() {
     mx7219.begin();
     mx7219.setIntensity(webui.brightness());
     if (!webui.matrixEnabled()) mx7219.clear();
-    mx7219.showText("VID-PRO");
+    mx7219.showText("MASTER");
     delay(3000);
     Serial.print(MAX7219_NUM_MODULES);
     Serial.println(F(" modules initialized."));
 #endif
-
-    Serial.print(F("Starting BLE master... "));
-    bleTimecodeInit();
-    Serial.println(F("OK"));
-
-    Serial.println(F("LTC generator running. Connect HDMI now."));
 }
 
-// ---------------------------------------------------------------------------
-// loop()
-// ---------------------------------------------------------------------------
-void loop() {
-#if WEBUI_ENABLE
-    webui.handleClient();
-#endif
-
-    // AP health check — print channel + station count every 5 s (only when AP is active)
-    static unsigned long lastApDiag = 0;
+// ===========================================================================
+// Master-specific: loop
+// ===========================================================================
+static void masterLoop() {
     unsigned long now = millis();
+
+    // AP health check
+    static unsigned long lastApDiag = 0;
     if (now - lastApDiag >= 5000) {
         lastApDiag = now;
         wifi_mode_t mode;
@@ -411,9 +345,6 @@ void loop() {
         }
     }
 
-    // -----------------------------------------------------------------------
-    // REVERSE ENGINEER MODE
-    // -----------------------------------------------------------------------
 #if REVERSE_ENGINEER_MODE
     if (tcPresent) {
         runReverseEngineerDump();
@@ -428,12 +359,9 @@ void loop() {
     }
 #endif
 
-    // -----------------------------------------------------------------------
-    // RUN MODE
-    // -----------------------------------------------------------------------
     bool locked = tcPresent ? tc.hasSignal() : false;
 
-    // ----- Fast poll: detect new frames via SYS_INT -----
+    // Fast poll: detect new frames via SYS_INT
     if (now - lastFastPoll >= FAST_POLL_MS) {
         lastFastPoll = now;
 
@@ -473,7 +401,7 @@ void loop() {
         }
     }
 
-    // ----- Frame-synced processing -----
+    // Frame-synced processing
     if (now - lastFramePoll >= framePollMs) {
         lastFramePoll += framePollMs;
         if (now - lastFramePoll >= framePollMs) lastFramePoll = now;
@@ -533,5 +461,209 @@ void loop() {
         webui.update(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff(),
                      ltc.fps(), ltc.dropFrame(), hdmiOk, tcSource);
 #endif
+    }
+}
+
+// ===========================================================================
+// Slave-specific: setup
+// ===========================================================================
+static void slaveSetup() {
+    Wire.begin(TC_I2C_SDA_PIN, TC_I2C_SCL_PIN);
+
+    // BLE client init — callback set after init
+    Serial.print(F("BLE client init... "));
+    bleTimecodeInit();
+    bleTimecodeSetCallback(onBleTimecode);
+    Serial.println(F("done"));
+
+    // LTC encoder
+    ltc.begin();
+    ltc.setTime(0, 0, 0, 0);
+    Serial.println(F("LTC encoder started"));
+
+#if OLED_ENABLE
+    oled.begin();
+    Serial.println(F("OLED started"));
+#endif
+
+#if MAX7219_ENABLE
+    mx7219.begin();
+    mx7219.showText("SLAVE");
+    delay(2000);
+    Serial.println(F("MAX7219 started"));
+#endif
+
+    Serial.println(F("Ready. Scanning for master..."));
+}
+
+// ===========================================================================
+// Slave-specific: loop
+// ===========================================================================
+static void slaveLoop() {
+    bleTimecodePoll();
+
+    uint16_t frames = ltc.framesCompleted();
+    while (frames--) ltc.tick();
+
+#if OLED_ENABLE
+    fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
+    oled.update(tcStr, ltc.fps(), bleTimecodeConnected());
+#endif
+
+#if MAX7219_ENABLE
+#if WEBUI_ENABLE
+    if (webui.matrixEnabled()) {
+        mx7219.showTimecode(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
+    }
+#else
+    mx7219.showTimecode(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
+#endif
+#endif
+
+#if WEBUI_ENABLE
+    webui.update(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff(),
+                 ltc.fps(), ltc.dropFrame(), bleTimecodeConnected(),
+                 bleTimecodeConnected() ? "BLE" : "SCAN");
+#endif
+}
+
+// ===========================================================================
+// setup()
+// ===========================================================================
+void setup() {
+    Serial.begin(115200);
+    delay(2000);
+    printResetReason();
+
+    pinMode(STATUS_LED_PIN, OUTPUT);
+    digitalWrite(STATUS_LED_PIN, LOW);
+
+    // Read BLE mode from NVS (dual-mode) or use compile-time mode (single-mode)
+#if defined(BLE_MODE_RUNTIME)
+    {
+        Preferences blePrefs;
+        blePrefs.begin("ble", true);
+        currentBleMode = blePrefs.getInt("mode", BLE_MODE_MASTER);
+        blePrefs.end();
+    }
+#else
+    currentBleMode = bleGetMode();
+#endif
+
+    Serial.print(F("GH5 HDMI -> LTC box starting in "));
+    Serial.print(currentBleMode == BLE_MODE_MASTER ? "MASTER" : "SLAVE");
+    Serial.println(F(" mode..."));
+    Serial.println();
+
+    printConfig();
+
+    // Start WiFi AP + web server BEFORE LTC timer
+#if WEBUI_ENABLE
+    // Build AP SSID from BLE name: if default → "GH2LTC_" + last 4 MAC digits, else use BLE name
+    static char apSsid[33];
+    {
+        Preferences blePrefs;
+        blePrefs.begin("ble", true);
+        const char *defaultName = (currentBleMode == BLE_MODE_MASTER) ? "TC-LTC-MASTER" : "TC-LTC-SLAVE";
+        String bleName = blePrefs.getString(
+            (currentBleMode == BLE_MODE_MASTER) ? "name" : "slave_name",
+            defaultName);
+        blePrefs.end();
+
+        if (bleName == "TC-LTC-MASTER" || bleName == "TC-LTC-SLAVE") {
+            uint8_t mac[6] = {};
+            esp_efuse_mac_get_default(mac);
+            snprintf(apSsid, sizeof(apSsid), "GH2LTC_%02X%02X", mac[4], mac[5]);
+        } else {
+            strncpy(apSsid, bleName.c_str(), sizeof(apSsid) - 1);
+            apSsid[sizeof(apSsid) - 1] = '\0';
+        }
+    }
+    Serial.print(F("Starting WiFi AP... "));
+    Serial.println(apSsid);
+    webui.begin(apSsid, WEBUI_AP_PASSWORD,
+                WEBUI_STA_SSID, WEBUI_STA_PASSWORD);
+    webui.onSetFps([](uint8_t fps, bool df) {
+        ltc.setFps(fps, df);
+        framePollMs = 1000 / fps;
+        {
+            Preferences prefs;
+            prefs.begin("ltc", false);
+            prefs.putUChar("fps", fps);
+            prefs.putBool("df", df);
+            prefs.end();
+        }
+#if FPS_AUTO_DETECT
+        if (webui.autoFps()) resetFpsDetect();
+#endif
+    });
+    webui.onJamTime([](uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff) {
+        ltc.setTime(hh, mm, ss, ff);
+        ltc.setDd(dd);
+        Serial.printf("jam %02u:%02u:%02u:%02u:%02u\n", dd, hh, mm, ss, ff);
+    });
+#if MAX7219_ENABLE
+    webui.onSetBrightness([](uint8_t val) {
+        mx7219.setIntensity(val);
+    });
+    webui.onSetMatrixEnabled([](bool en) {
+        if (en) {
+            mx7219.showTimecode(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
+        } else {
+            mx7219.clear();
+        }
+    });
+#endif
+
+    WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
+        switch (event) {
+            case ARDUINO_EVENT_WIFI_AP_STACONNECTED:
+                Serial.print(F("WiFi: STA connected, MAC="));
+                Serial.printf("%02X:%02X:%02X:%02X:%02X:%02X\n",
+                    info.wifi_ap_staconnected.mac[0],
+                    info.wifi_ap_staconnected.mac[1],
+                    info.wifi_ap_staconnected.mac[2],
+                    info.wifi_ap_staconnected.mac[3],
+                    info.wifi_ap_staconnected.mac[4],
+                    info.wifi_ap_staconnected.mac[5]);
+                break;
+            case ARDUINO_EVENT_WIFI_AP_STADISCONNECTED:
+                Serial.printf("WiFi: STA disconnected, MAC=%02X:%02X:%02X:%02X:%02X:%02X aid=%d\n",
+                    info.wifi_ap_stadisconnected.mac[0],
+                    info.wifi_ap_stadisconnected.mac[1],
+                    info.wifi_ap_stadisconnected.mac[2],
+                    info.wifi_ap_stadisconnected.mac[3],
+                    info.wifi_ap_stadisconnected.mac[4],
+                    info.wifi_ap_stadisconnected.mac[5],
+                    info.wifi_ap_stadisconnected.aid);
+                break;
+            case ARDUINO_EVENT_WIFI_AP_STAIPASSIGNED:
+                Serial.println(F("WiFi: STA got IP"));
+                break;
+        }
+    });
+#endif
+
+    if (currentBleMode == BLE_MODE_MASTER) {
+        masterSetup();
+    } else {
+        slaveSetup();
+    }
+
+    Serial.println(F("System ready."));
+}
+
+// ===========================================================================
+// loop()
+// ===========================================================================
+void loop() {
+#if WEBUI_ENABLE
+    webui.handleClient();
+#endif
+
+    if (currentBleMode == BLE_MODE_MASTER) {
+        masterLoop();
+    } else {
+        slaveLoop();
     }
 }

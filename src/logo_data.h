@@ -1,7 +1,6 @@
 #pragma once
 #include <Arduino.h>
 
-#ifndef BLE_SLAVE
 // Logo/vid-pro.png (142292 bytes) — served from flash via PROGMEM
 static const unsigned char logo_png[] PROGMEM = {
   0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0x00,0x00,0x00,0x0d,
@@ -11864,4 +11863,4 @@ static const unsigned char logo_png[] PROGMEM = {
   0x49,0x45,0x4e,0x44,0xae,0x42,0x60,0x82,
 };
 const unsigned int logo_png_len = 142292;
-#endif // !BLE_SLAVE
+

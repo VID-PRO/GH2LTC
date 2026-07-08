@@ -6,9 +6,15 @@ extern const BLEUUID bleTimecodeServiceUUID;
 extern const BLEUUID bleTimecodeCharUUID;
 extern const BLEUUID bleTimecodeNameCharUUID;
 
+// Runtime mode management (always available)
+int bleGetMode();
+void bleSetMode(int mode);
+#define BLE_MODE_MASTER 1
+#define BLE_MODE_SLAVE  2
+
 void bleTimecodeInit();
 
-#if defined(BLE_MASTER)
+// Master-mode functions (no-ops in slave mode)
 void bleTimecodeUpdate(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff);
 void bleTimecodeSetName(const char *name);
 const char *bleTimecodeGetName();
@@ -24,7 +30,7 @@ typedef struct {
 
 uint8_t bleTimecodeGetPeers(BlePeerInfo *peers, uint8_t maxPeers);
 
-#elif defined(BLE_SLAVE)
+// Slave-mode functions (no-ops in master mode)
 typedef void (*BleTimecodeCb)(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff);
 void bleTimecodeSetCallback(BleTimecodeCb cb);
 void bleTimecodePoll();
@@ -40,6 +46,3 @@ void bleTimecodeSelect(const char *address);
 const char *bleTimecodeSelectedAddress();
 const char *bleTimecodeConnectedAddress();
 const char *bleTimecodeConnectedName();
-void bleTimecodeSetName(const char *name);
-const char *bleTimecodeGetName();
-#endif
