@@ -459,172 +459,6 @@ void WebUI::handleRoot() {
         html.replace("__STA_SSID__", "—");
         html.replace("__STA_IP__",   "—");
     }
-#ifndef BLE_SLAVE
-    html.replace("__BLE_HTML__",
-        "<div class=\"ble-section\">"
-        "<div class=\"settings-title\">BLE Setup</div>"
-        "<div class=\"ble-form\">"
-        "<div class=\"row\">"
-        "<input type=\"text\" id=\"ble-name-input\" value=\"" + String(bleTimecodeGetName()) + "\" maxlength=\"32\">"
-        "<button onclick=\"bleSetName()\">Save Name</button>"
-        "<button class=\"wifi-forget-btn\" onclick=\"bleDisconnectAll()\">Disconnect All</button>"
-        "</div>"
-        "<div id=\"ble-peers\"></div>"
-        "<div class=\"ble-msg\" id=\"ble-msg\"></div>"
-        "</div></div>");
-#else
-    html.replace("__BLE_HTML__",
-        "<div class=\"ble-section\">"
-        "<div class=\"settings-title\">BLE Setup</div>"
-        "<div class=\"ble-form\">"
-        "<div class=\"row\">"
-        "<input type=\"text\" id=\"ble-name-input\" value=\"" + String(bleTimecodeGetName()) + "\" maxlength=\"32\">"
-        "<button onclick=\"bleSetName()\">Save Name</button>"
-        "</div>"
-        "</div>"
-        "<div class=\"ble-status\">"
-        "Status: <span id=\"ble-status\">—</span>"
-        "</div>"
-        "<div class=\"ble-form\">"
-        "<button onclick=\"bleScan()\" id=\"ble-scan-btn\">Scan</button>"
-        "<div class=\"ble-msg\" id=\"ble-msg\"></div>"
-        "</div>"
-        "<div id=\"ble-results\"></div>"
-        "</div>");
-#endif
-    html.replace("__BLE_JS__",
-#ifndef BLE_SLAVE
-        "function bleSetName(){"
-        "var n=document.getElementById('ble-name-input').value;"
-        "if(!n)return;"
-        "var x=new XMLHttpRequest();"
-        "x.open('POST','/api/ble',true);"
-        "x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');"
-        "x.onload=function(){"
-        "if(x.status==200){"
-        "var d=JSON.parse(x.responseText);"
-        "if(d.reboot){"
-        "document.getElementById('ble-msg').textContent='Saved. Rebooting...';"
-        "setTimeout(function(){location.reload()},2000);"
-        "} else document.getElementById('ble-msg').textContent='OK';"
-        "} else {"
-        "try{document.getElementById('ble-msg').textContent=JSON.parse(x.responseText).error}"
-        "catch(e){document.getElementById('ble-msg').textContent='Error'}"
-        "}"
-        "};"
-        "x.send('action=setname&name='+encodeURIComponent(n));"
-        "}"
-        "function bleDisconnectAll(){"
-        "var x=new XMLHttpRequest();"
-        "x.open('POST','/api/ble',true);"
-        "x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');"
-        "x.onload=function(){if(x.status==200){"
-        "document.getElementById('ble-msg').textContent='Disconnected all'"
-        "}};"
-        "x.send('action=disconnect');"
-        "}"
-        "function bleDisconnectPeer(addr){"
-        "var x=new XMLHttpRequest();"
-        "x.open('POST','/api/ble',true);"
-        "x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');"
-        "x.onload=function(){if(x.status==200){"
-        "document.getElementById('ble-msg').textContent='Disconnected '+addr"
-        "}};"
-        "x.send('action=disconnect_peer&address='+encodeURIComponent(addr));"
-        "}"
-        "setInterval(function(){"
-        "var x=new XMLHttpRequest();"
-        "x.open('GET','/api/ble',true);"
-        "x.onload=function(){"
-        "if(x.status!=200)return;"
-        "try{var d=JSON.parse(x.responseText);"
-        "var el=document.getElementById('ble-peers');"
-        "if(!el)return;"
-        "var h='';"
-        "if(d.peers&&d.peers.length){"
-        "h='<div class=\"ble-subtitle\">Connected Peers</div>';"
-        "for(var i=0;i<d.peers.length;i++){"
-        "h+='<div class=\"ble-peer\">';"
-        "h+='<span>'+(d.peers[i].name||d.peers[i].addr)+'</span>';"
-        "h+='<button onclick=\"bleDisconnectPeer(\\''+d.peers[i].addr+'\\')\">Disconnect</button>';"
-        "h+='</div>';"
-        "}"
-        "} else {"
-        "h='<div class=\"ble-subtitle\" style=\"color:#444\">No slaves connected</div>';"
-        "}"
-        "el.innerHTML=h;"
-        "}catch(e){}"
-        "};"
-        "x.send();"
-        "},3000);"
-#else
-        "function bleSetName(){"
-        "var n=document.getElementById('ble-name-input').value;"
-        "if(!n)return;"
-        "var x=new XMLHttpRequest();"
-        "x.open('POST','/api/ble',true);"
-        "x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');"
-        "x.onload=function(){"
-        "if(x.status==200){"
-        "var d=JSON.parse(x.responseText);"
-        "if(d.reboot){"
-        "document.getElementById('ble-msg').textContent='Saved. Rebooting...';"
-        "setTimeout(function(){location.reload()},2000);"
-        "} else document.getElementById('ble-msg').textContent='OK';"
-        "} else {"
-        "try{document.getElementById('ble-msg').textContent=JSON.parse(x.responseText).error}"
-        "catch(e){document.getElementById('ble-msg').textContent='Error'}"
-        "}"
-        "};"
-        "x.send('action=setname&name='+encodeURIComponent(n));"
-        "}"
-        "function bleScan(){"
-        "var btn=document.getElementById('ble-scan-btn');"
-        "btn.disabled=true;btn.textContent='Scanning...';"
-        "document.getElementById('ble-msg').textContent='';"
-        "document.getElementById('ble-results').innerHTML='';"
-        "var x=new XMLHttpRequest();"
-        "x.open('POST','/api/ble',true);"
-        "x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');"
-        "x.onload=function(){"
-        "btn.disabled=false;btn.textContent='Scan';"
-        "if(x.status!=200)return;"
-        "var d=JSON.parse(x.responseText);"
-        "var h='';"
-        "for(var i=0;i<d.count;i++){"
-        "h+='<div class=\"ble-device\">';"
-        "h+='<span>'+d.devices[i].name+'</span>';"
-        "h+='<button onclick=\"bleSelect(\\''+d.devices[i].address+'\\')\">Connect</button>';"
-        "h+='</div>';"
-        "}"
-        "document.getElementById('ble-results').innerHTML=h||'<div class=\"ble-device\">No masters found</div>';"
-        "};"
-        "x.send('action=scan');"
-        "}"
-        "function bleSelect(addr){"
-        "var x=new XMLHttpRequest();"
-        "x.open('POST','/api/ble',true);"
-        "x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');"
-        "x.onload=function(){if(x.status==200){"
-        "document.getElementById('ble-msg').textContent='Connecting to '+addr+'...';"
-        "setTimeout(function(){location.reload()},3000);"
-        "}};"
-        "x.send('action=select&address='+encodeURIComponent(addr));"
-        "}"
-        "setInterval(function(){"
-        "var x=new XMLHttpRequest();"
-        "x.open('GET','/api/ble',true);"
-        "x.onload=function(){"
-        "if(x.status!=200)return;"
-        "try{var d=JSON.parse(x.responseText);"
-        "var el=document.getElementById('ble-status');"
-        "if(el)el.textContent=d.connected?'Connected ('+d.connected_name+')':'Disconnected';"
-        "}catch(e){}"
-        "};"
-        "x.send();"
-        "},3000);"
-#endif
-    );
     _server.send(200, "text/html", html);
 }
 
@@ -640,8 +474,8 @@ void WebUI::handleNotFound() {
 // =======================================================================
 
 String WebUI::_pageHtml() {
-    return String(F(
-R"rawliteral(<!DOCTYPE html>
+    // Part 1: everything before the BLE drawer-section content
+    String html = String(F(R"rawliteral(<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
@@ -882,14 +716,14 @@ html,body{
   -webkit-appearance:none;appearance:none;
   width:20px;height:20px;border-radius:50%;
   background:#00ffbb;border:none;cursor:pointer
+}
 
-/* BLE config */
-.ble-drawer-section{margin-top:12px;padding-top:12px;border-top:1px solid #1a1a1a}
-.ble-section{
+/* BLE config in drawer */
+.ble-drawer-section{
   margin-top:8px;padding-top:12px;border-top:1px solid #1a1a1a;
   color:#444;font-size:clamp(9px,1.5vw,11px)
 }
-.ble-section span{color:#666}
+.ble-drawer-section .settings-title{margin-bottom:10px}
 .ble-status{font-size:clamp(9px,1.5vw,11px);color:#444;margin-bottom:10px}
 .ble-status span{color:#666}
 .ble-form{display:flex;flex-direction:column;gap:8px}
@@ -1062,8 +896,42 @@ html,body{
     STA <span>__STA_SSID__</span> &nbsp;|&nbsp; <span>__STA_IP__</span>
   </div>
   <div class="ble-drawer-section">
-  __BLE_HTML__
+)rawliteral"));
+
+    // Part 2: BLE drawer HTML content (role-specific)
+#ifndef BLE_SLAVE
+    html += String(F(R"rawliteral(  <div class="settings-title">BLE Setup</div>
+  <div class="ble-form">
+    <div class="row">
+      <input type="text" id="ble-name-input" value="" maxlength="32">
+      <button onclick="bleSetName()">Save Name</button>
+      <button class="wifi-forget-btn" onclick="bleDisconnectAll()">Disconnect All</button>
+    </div>
+    <div id="ble-peers"></div>
+    <div class="ble-msg" id="ble-msg"></div>
   </div>
+)rawliteral"));
+#else
+    html += String(F(R"rawliteral(  <div class="settings-title">BLE Setup</div>
+  <div class="ble-form">
+    <div class="row">
+      <input type="text" id="ble-name-input" value="" maxlength="32">
+      <button onclick="bleSetName()">Save Name</button>
+    </div>
+  </div>
+  <div class="ble-status">
+    Status: <span id="ble-status">—</span>
+  </div>
+  <div class="ble-form">
+    <button onclick="bleScan()" id="ble-scan-btn">Scan</button>
+    <div class="ble-msg" id="ble-msg"></div>
+  </div>
+  <div id="ble-results"></div>
+)rawliteral"));
+#endif
+
+    // Part 3: everything from closing the drawer-section through common JS (up to __BLE_JS__)
+    html += String(F(R"rawliteral(  </div>
 </div>
 
 <script>
@@ -1271,8 +1139,172 @@ function wifiForget(){
   x.onerror=function(){msg.textContent='No response';msg.className='wifi-msg err';};
   x.send('ssid=&password=');
 }
-__BLE_JS__
-</script>
+)rawliteral"));
+
+    // Part 4: BLE JS (role-specific)
+#ifndef BLE_SLAVE
+    html += String(F(R"rawliteral(function bleSetName(){
+  var n=document.getElementById('ble-name-input').value;
+  if(!n)return;
+  var x=new XMLHttpRequest();
+  x.open('POST','/api/ble',true);
+  x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
+  x.onload=function(){
+    if(x.status==200){
+      var d=JSON.parse(x.responseText);
+      if(d.reboot){
+        document.getElementById('ble-msg').textContent='Saved. Rebooting...';
+        setTimeout(function(){location.reload()},2000);
+      } else document.getElementById('ble-msg').textContent='OK';
+    } else {
+      try{document.getElementById('ble-msg').textContent=JSON.parse(x.responseText).error}
+      catch(e){document.getElementById('ble-msg').textContent='Error'}
+    }
+  };
+  x.send('action=setname&name='+encodeURIComponent(n));
+}
+function bleDisconnectAll(){
+  var x=new XMLHttpRequest();
+  x.open('POST','/api/ble',true);
+  x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
+  x.onload=function(){if(x.status==200){
+    document.getElementById('ble-msg').textContent='Disconnected all'
+  }};
+  x.send('action=disconnect');
+}
+function bleDisconnectPeer(addr){
+  var x=new XMLHttpRequest();
+  x.open('POST','/api/ble',true);
+  x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
+  x.onload=function(){if(x.status==200){
+    document.getElementById('ble-msg').textContent='Disconnected '+addr
+  }};
+  x.send('action=disconnect_peer&address='+encodeURIComponent(addr));
+}
+setInterval(function(){
+  var x=new XMLHttpRequest();
+  x.open('GET','/api/ble',true);
+  x.onload=function(){
+    if(x.status!=200)return;
+    try{var d=JSON.parse(x.responseText);
+    var el=document.getElementById('ble-peers');
+    if(!el)return;
+    var h='';
+    if(d.peers&&d.peers.length){
+      h='<div class="ble-subtitle">Connected Peers</div>';
+      for(var i=0;i<d.peers.length;i++){
+        h+='<div class="ble-peer">';
+        h+='<span>'+(d.peers[i].name||d.peers[i].addr)+'</span>';
+        h+='<button onclick="bleDisconnectPeer(\''+d.peers[i].addr+'\')">Disconnect</button>';
+        h+='</div>';
+      }
+    } else {
+      h='<div class="ble-subtitle" style="color:#444">No slaves connected</div>';
+    }
+    el.innerHTML=h;
+    }catch(e){}
+  };
+  x.send();
+},3000);
+
+(function(){
+  var x=new XMLHttpRequest();
+  x.open('GET','/api/ble',true);
+  x.onload=function(){
+    if(x.status!=200)return;
+    try{var d=JSON.parse(x.responseText);
+    var el=document.getElementById('ble-name-input');
+    if(el) el.value=d.name;
+    }catch(e){}
+  };
+  x.send();
+})();
+)rawliteral"));
+#else
+    html += String(F(R"rawliteral(function bleSetName(){
+  var n=document.getElementById('ble-name-input').value;
+  if(!n)return;
+  var x=new XMLHttpRequest();
+  x.open('POST','/api/ble',true);
+  x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
+  x.onload=function(){
+    if(x.status==200){
+      var d=JSON.parse(x.responseText);
+      if(d.reboot){
+        document.getElementById('ble-msg').textContent='Saved. Rebooting...';
+        setTimeout(function(){location.reload()},2000);
+      } else document.getElementById('ble-msg').textContent='OK';
+    } else {
+      try{document.getElementById('ble-msg').textContent=JSON.parse(x.responseText).error}
+      catch(e){document.getElementById('ble-msg').textContent='Error'}
+    }
+  };
+  x.send('action=setname&name='+encodeURIComponent(n));
+}
+function bleScan(){
+  var btn=document.getElementById('ble-scan-btn');
+  btn.disabled=true;btn.textContent='Scanning...';
+  document.getElementById('ble-msg').textContent='';
+  document.getElementById('ble-results').innerHTML='';
+  var x=new XMLHttpRequest();
+  x.open('POST','/api/ble',true);
+  x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
+  x.onload=function(){
+    btn.disabled=false;btn.textContent='Scan';
+    if(x.status!=200)return;
+    var d=JSON.parse(x.responseText);
+    var h='';
+    for(var i=0;i<d.count;i++){
+      h+='<div class="ble-device">';
+      h+='<span>'+d.devices[i].name+'</span>';
+      h+='<button onclick="bleSelect(\''+d.devices[i].address+'\')">Connect</button>';
+      h+='</div>';
+    }
+    document.getElementById('ble-results').innerHTML=h||'<div class="ble-device">No masters found</div>';
+  };
+  x.send('action=scan');
+}
+function bleSelect(addr){
+  var x=new XMLHttpRequest();
+  x.open('POST','/api/ble',true);
+  x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
+  x.onload=function(){if(x.status==200){
+    document.getElementById('ble-msg').textContent='Connecting to '+addr+'...';
+    setTimeout(function(){location.reload()},3000);
+  }};
+  x.send('action=select&address='+encodeURIComponent(addr));
+}
+setInterval(function(){
+  var x=new XMLHttpRequest();
+  x.open('GET','/api/ble',true);
+  x.onload=function(){
+    if(x.status!=200)return;
+    try{var d=JSON.parse(x.responseText);
+    var el=document.getElementById('ble-status');
+    if(el)el.textContent=d.connected?'Connected ('+d.connected_name+')':'Disconnected';
+    }catch(e){}
+  };
+  x.send();
+},3000);
+
+(function(){
+  var x=new XMLHttpRequest();
+  x.open('GET','/api/ble',true);
+  x.onload=function(){
+    if(x.status!=200)return;
+    try{var d=JSON.parse(x.responseText);
+    var el=document.getElementById('ble-name-input');
+    if(el) el.value=d.name;
+    }catch(e){}
+  };
+  x.send();
+})();
+)rawliteral"));
+#endif
+
+    // Part 5: closing tags
+    html += String(F(R"rawliteral(</script>
 </body>
 </html>)rawliteral"));
+    return html;
 }
