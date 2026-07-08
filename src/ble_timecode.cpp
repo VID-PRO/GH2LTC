@@ -18,6 +18,7 @@ static const char *NVS_NS = "ble";
 // 128-bit custom service / characteristic UUIDs
 const BLEUUID bleTimecodeServiceUUID(std::string("9a6f0001-5c9a-4b3e-8a2c-f12345678901"));
 const BLEUUID bleTimecodeCharUUID(std::string("9a6f0002-5c9a-4b3e-8a2c-f12345678901"));
+const BLEUUID bleTimecodeNameCharUUID(std::string("9a6f0003-5c9a-4b3e-8a2c-f12345678901"));
 
 // =========================================================================
 // BLE Master — advertises timecode service, sends notifications per frame
@@ -35,8 +36,6 @@ struct PeerInfo {
     uint16_t connId;
 };
 static std::vector<PeerInfo> peers;
-static bool pendingNameScan = false;
-static unsigned long lastPeerScan = 0;
 
 class ServerCallbacks : public BLEServerCallbacks {
     void onConnect(BLEServer *pServer) override {
@@ -53,7 +52,6 @@ class ServerCallbacks : public BLEServerCallbacks {
         pi.name[0] = '\0';
         pi.connId = param->connect.conn_id;
         peers.push_back(pi);
-        pendingNameScan = true;
     }
     void onDisconnect(BLEServer *pServer) override {
         deviceConnected = false;
@@ -66,6 +64,21 @@ class ServerCallbacks : public BLEServerCallbacks {
             [cid](const PeerInfo &p) { return p.connId == cid; }), peers.end());
         deviceConnected = !peers.empty();
         BLEDevice::getAdvertising()->start();
+    }
+};
+
+class SlaveNameCallbacks : public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic *pChar, esp_ble_gatts_cb_param_t *param) override {
+        uint16_t cid = param->write.conn_id;
+        std::string val = pChar->getValue();
+        for (auto &p : peers) {
+            if (p.connId == cid) {
+                size_t len = std::min(val.size(), sizeof(p.name) - 1);
+                memcpy(p.name, val.data(), len);
+                p.name[len] = '\0';
+                break;
+            }
+        }
     }
 };
 
@@ -138,6 +151,14 @@ void bleTimecodeInit() {
     uint8_t init[5] = {0, 0, 0, 0, 0};
     tcChar->setValue(init, 5);
 
+    BLECharacteristic *nameChar = svc->createCharacteristic(
+        bleTimecodeNameCharUUID,
+        BLECharacteristic::PROPERTY_WRITE
+    );
+    nameChar->addDescriptor(new BLE2902());
+    nameChar->setCallbacks(new SlaveNameCallbacks());
+    nameChar->setValue("");
+
     svc->start();
 
     BLEAdvertising *adv = BLEDevice::getAdvertising();
@@ -153,41 +174,6 @@ void bleTimecodeUpdate(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_t f
     uint8_t data[5] = {dd, hh, mm, ss, ff};
     tcChar->setValue(data, 5);
     tcChar->notify();
-
-    // Periodically resolve names of connected peers via BLE scan
-    unsigned long now = millis();
-    if ((pendingNameScan || now - lastPeerScan > 30000) && !peers.empty()) {
-        lastPeerScan = now;
-        pendingNameScan = false;
-        BLEScan *scan = BLEDevice::getScan();
-        scan->setAdvertisedDeviceCallbacks(nullptr);
-        scan->setActiveScan(true);
-        scan->setInterval(100);
-        scan->setWindow(50);
-        BLEScanResults results = scan->start(2, false);
-        for (int i = 0; i < results.getCount(); i++) {
-            BLEAdvertisedDevice dev = results.getDevice(i);
-            if (!dev.haveName()) continue;
-            BLEAddress addr = dev.getAddress();
-            char addrStr[18];
-            snprintf(addrStr, sizeof(addrStr),
-                     "%02x:%02x:%02x:%02x:%02x:%02x",
-                     (*addr.getNative())[5], (*addr.getNative())[4],
-                     (*addr.getNative())[3], (*addr.getNative())[2],
-                     (*addr.getNative())[1], (*addr.getNative())[0]);
-            for (auto &p : peers) {
-                if (strcmp(p.address, addrStr) == 0) {
-                    const char *dn = dev.getName().c_str();
-                    if (dn && dn[0]) {
-                        strncpy(p.name, dn, sizeof(p.name) - 1);
-                        p.name[sizeof(p.name) - 1] = '\0';
-                    }
-                    break;
-                }
-            }
-        }
-        scan->clearResults();
-    }
 }
 
 // =========================================================================
@@ -266,6 +252,12 @@ static bool tryConnect(BLEAdvertisedDevice &dev) {
     } else {
         snprintf(connectedName, sizeof(connectedName),
                  "TC-MASTER-%s", connectedAddr + 9);
+    }
+
+    // Write our slave name to the master's name characteristic
+    BLERemoteCharacteristic *nameChar = svc->getCharacteristic(bleTimecodeNameCharUUID);
+    if (nameChar && nameChar->canWrite()) {
+        nameChar->writeValue((uint8_t *)slaveBleName, strlen(slaveBleName));
     }
     return true;
 }

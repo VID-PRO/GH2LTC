@@ -467,8 +467,6 @@ void WebUI::handleRoot() {
         "<div class=\"row\">"
         "<input type=\"text\" id=\"ble-name-input\" value=\"" + String(bleTimecodeGetName()) + "\" maxlength=\"32\">"
         "<button onclick=\"bleSetName()\">Save Name</button>"
-        "</div>"
-        "<div class=\"row\">"
         "<button class=\"wifi-forget-btn\" onclick=\"bleDisconnectAll()\">Disconnect All</button>"
         "</div>"
         "<div id=\"ble-peers\"></div>"

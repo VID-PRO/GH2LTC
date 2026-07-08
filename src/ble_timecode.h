@@ -4,6 +4,7 @@
 
 extern const BLEUUID bleTimecodeServiceUUID;
 extern const BLEUUID bleTimecodeCharUUID;
+extern const BLEUUID bleTimecodeNameCharUUID;
 
 void bleTimecodeInit();
 
