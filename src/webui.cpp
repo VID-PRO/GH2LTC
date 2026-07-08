@@ -193,8 +193,9 @@ void WebUI::handleApiConfig() {
             _autoFps = false;
             fps = v;
         }
+        _fps = fps;
     }
-    if (dfStr.length()) df = (dfStr.toInt() != 0);
+    if (dfStr.length()) { df = (dfStr.toInt() != 0); _dropFrame = df; }
 
     if (_fpsCb) _fpsCb(fps, df);
 
@@ -1168,7 +1169,8 @@ function bleDisconnectAll(){
   x.open('POST','/api/ble',true);
   x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
   x.onload=function(){if(x.status==200){
-    document.getElementById('ble-msg').textContent='Disconnected all'
+    document.getElementById('ble-msg').textContent='Disconnected all';
+    pollBleMaster();
   }};
   x.send('action=disconnect');
 }
@@ -1177,11 +1179,12 @@ function bleDisconnectPeer(addr){
   x.open('POST','/api/ble',true);
   x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
   x.onload=function(){if(x.status==200){
-    document.getElementById('ble-msg').textContent='Disconnected '+addr
+    document.getElementById('ble-msg').textContent='Disconnected '+addr;
+    pollBleMaster();
   }};
   x.send('action=disconnect_peer&address='+encodeURIComponent(addr));
 }
-setInterval(function(){
+function pollBleMaster(){
   var x=new XMLHttpRequest();
   x.open('GET','/api/ble',true);
   x.onload=function(){
@@ -1205,7 +1208,8 @@ setInterval(function(){
     }catch(e){}
   };
   x.send();
-},3000);
+}
+setInterval(pollBleMaster,3000);
 
 (function(){
   var x=new XMLHttpRequest();
@@ -1261,6 +1265,7 @@ function bleScan(){
       h+='</div>';
     }
     document.getElementById('ble-results').innerHTML=h||'<div class="ble-device">No masters found</div>';
+    pollBleSlave();
   };
   x.send('action=scan');
 }
@@ -1270,11 +1275,12 @@ function bleSelect(addr){
   x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
   x.onload=function(){if(x.status==200){
     document.getElementById('ble-msg').textContent='Connecting to '+addr+'...';
+    pollBleSlave();
     setTimeout(function(){location.reload()},3000);
   }};
   x.send('action=select&address='+encodeURIComponent(addr));
 }
-setInterval(function(){
+function pollBleSlave(){
   var x=new XMLHttpRequest();
   x.open('GET','/api/ble',true);
   x.onload=function(){
@@ -1285,7 +1291,8 @@ setInterval(function(){
     }catch(e){}
   };
   x.send();
-},3000);
+}
+setInterval(pollBleSlave,3000);
 
 (function(){
   var x=new XMLHttpRequest();
