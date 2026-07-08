@@ -29,13 +29,13 @@ jobs:
 
       - name: Upload firmware to release
         run: |
-          gh release upload "${{ github.ref_name }}" \
-            .pio/build/master/firmware.bin:master-firmware.bin \
-            .pio/build/master/bootloader.bin:master-bootloader.bin \
-            .pio/build/master/partitions.bin:master-partitions.bin \
-            .pio/build/slave/firmware.bin:slave-firmware.bin \
-            .pio/build/slave/bootloader.bin:slave-bootloader.bin \
-            .pio/build/slave/partitions.bin:slave-partitions.bin \
-            --clobber
+          mkdir -p upload
+          cp .pio/build/master/firmware.bin    upload/master-firmware.bin
+          cp .pio/build/master/bootloader.bin  upload/master-bootloader.bin
+          cp .pio/build/master/partitions.bin  upload/master-partitions.bin
+          cp .pio/build/slave/firmware.bin     upload/slave-firmware.bin
+          cp .pio/build/slave/bootloader.bin   upload/slave-bootloader.bin
+          cp .pio/build/slave/partitions.bin   upload/slave-partitions.bin
+          gh release upload "${{ github.ref_name }}" upload/* --clobber
         env:
           GH_TOKEN: ${{ github.token }}
