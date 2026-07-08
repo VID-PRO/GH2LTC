@@ -111,6 +111,39 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
    pio device monitor -b 115200
    ```
 
+### Flashing from Pre-built Binaries
+
+Download the latest `firmware` artifact from [GitHub Releases](https://github.com/VID-PRO/GH2LTC/releases). Each release contains six files — you need **three** per board.
+
+**Using `esptool.py`** (install via `pip install esptool`):
+
+**Master** (HDMI + LTC + BLE server):
+```
+esptool.py --chip esp32c3 --port /dev/ttyUSB0 write_flash \
+  0x0 master-bootloader.bin \
+  0x8000 master-partitions.bin \
+  0x10000 master-firmware.bin
+```
+
+**Slave** (BLE client, no HDMI):
+```
+esptool.py --chip esp32c3 --port /dev/ttyUSB0 write_flash \
+  0x0 slave-bootloader.bin \
+  0x8000 slave-partitions.bin \
+  0x10000 slave-firmware.bin
+```
+
+> Replace `/dev/ttyUSB0` with your port (`COM3` on Windows, `/dev/cu.usbmodem*` on macOS).
+
+**Using PlatformIO** (when you have the source):
+```
+pio run -e master -t upload      # Master
+pio run -e slave -t upload       # Slave
+```
+
+**First-time driver note (ESP32-C3 Super Mini):**  
+On macOS/Linux the USB serial (CDC) should appear automatically. On Windows you may need a [CP210x or CH340 driver](https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers) depending on your board's UART bridge.
+
 ### Env Comparison
 
 | | `master` | `slave` |
