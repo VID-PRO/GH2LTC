@@ -324,116 +324,116 @@ void WebUI::handleApiWifi() {
 // GET/POST /api/ble  — BLE status and control
 // -----------------------------------------------------------------------
 void WebUI::handleApiBle() {
-#if defined(BLE_MASTER)
-    if (_server.method() == HTTP_POST) {
-        String action = _server.arg("action");
+    if (bleGetMode() == BLE_MODE_MASTER) {
+        if (_server.method() == HTTP_POST) {
+            String action = _server.arg("action");
 
-        if (action == "setname") {
-            String name = _server.arg("name");
-            if (name.length() > 0 && name.length() <= 32) {
-                bleTimecodeSetName(name.c_str());
-                _server.send(200, "application/json",
-                    "{\"ok\":true,\"reboot\":true}");
+            if (action == "setname") {
+                String name = _server.arg("name");
+                if (name.length() > 0 && name.length() <= 32) {
+                    bleTimecodeSetName(name.c_str());
+                    _server.send(200, "application/json",
+                        "{\"ok\":true,\"reboot\":true}");
+                    return;
+                }
+                _server.send(400, "application/json",
+                    "{\"ok\":false,\"error\":\"invalid name\"}");
                 return;
             }
-            _server.send(400, "application/json",
-                "{\"ok\":false,\"error\":\"invalid name\"}");
-            return;
-        }
 
-        if (action == "disconnect") {
-            bleTimecodeDisconnectAll();
-            _server.send(200, "application/json", "{\"ok\":true}");
-            return;
-        }
-
-        if (action == "disconnect_peer") {
-            String addr = _server.arg("address");
-            if (addr.length()) {
-                bleTimecodeDisconnectPeer(addr.c_str());
+            if (action == "disconnect") {
+                bleTimecodeDisconnectAll();
                 _server.send(200, "application/json", "{\"ok\":true}");
                 return;
             }
-            _server.send(400, "application/json",
-                "{\"ok\":false,\"error\":\"address required\"}");
-            return;
-        }
 
-        _server.send(400, "application/json",
-            "{\"ok\":false,\"error\":\"unknown action\"}");
-        return;
-    }
-
-    // GET — return master name + peer list
-    BlePeerInfo peerBuf[8];
-    uint8_t n = bleTimecodeGetPeers(peerBuf, 8);
-    String json = "{\"name\":\"" + String(bleTimecodeGetName()) + "\",\"peers\":[";
-    for (uint8_t i = 0; i < n; i++) {
-        if (i) json += ',';
-        json += "{\"addr\":\"" + String(peerBuf[i].address) + "\",\"name\":\"" + String(peerBuf[i].name) + "\"}";
-    }
-    json += "]}";
-    _server.send(200, "application/json", json);
-
-#elif defined(BLE_SLAVE)
-    if (_server.method() == HTTP_POST) {
-        String action = _server.arg("action");
-
-        if (action == "setname") {
-            String name = _server.arg("name");
-            if (name.length() > 0 && name.length() <= 32) {
-                bleTimecodeSetName(name.c_str());
-                _server.send(200, "application/json",
-                    "{\"ok\":true,\"reboot\":true}");
+            if (action == "disconnect_peer") {
+                String addr = _server.arg("address");
+                if (addr.length()) {
+                    bleTimecodeDisconnectPeer(addr.c_str());
+                    _server.send(200, "application/json", "{\"ok\":true}");
+                    return;
+                }
+                _server.send(400, "application/json",
+                    "{\"ok\":false,\"error\":\"address required\"}");
                 return;
             }
+
             _server.send(400, "application/json",
-                "{\"ok\":false,\"error\":\"invalid name\"}");
+                "{\"ok\":false,\"error\":\"unknown action\"}");
             return;
         }
 
-        if (action == "scan") {
-            BleScanResult results[10];
-            uint8_t count = bleTimecodeScan(results, 10);
-            String json = "{\"count\":" + String(count) + ",\"devices\":[";
-            for (uint8_t i = 0; i < count; i++) {
-                if (i) json += ',';
-                json += "{\"name\":\"" + String(results[i].name) +
-                        "\",\"address\":\"" + String(results[i].address) + "\"}";
-            }
-            json += "]}";
-            _server.send(200, "application/json", json);
-            return;
+        // GET — return master name + peer list
+        BlePeerInfo peerBuf[8];
+        uint8_t n = bleTimecodeGetPeers(peerBuf, 8);
+        String json = "{\"name\":\"" + String(bleTimecodeGetName()) + "\",\"peers\":[";
+        for (uint8_t i = 0; i < n; i++) {
+            if (i) json += ',';
+            json += "{\"addr\":\"" + String(peerBuf[i].address) + "\",\"name\":\"" + String(peerBuf[i].name) + "\"}";
         }
+        json += "]}";
+        _server.send(200, "application/json", json);
+    } else {
+        // Slave mode
+        if (_server.method() == HTTP_POST) {
+            String action = _server.arg("action");
 
-        if (action == "select") {
-            String address = _server.arg("address");
-            if (address.length()) {
-                bleTimecodeSelect(address.c_str());
-                _server.send(200, "application/json", "{\"ok\":true}");
+            if (action == "setname") {
+                String name = _server.arg("name");
+                if (name.length() > 0 && name.length() <= 32) {
+                    bleTimecodeSetName(name.c_str());
+                    _server.send(200, "application/json",
+                        "{\"ok\":true,\"reboot\":true}");
+                    return;
+                }
+                _server.send(400, "application/json",
+                    "{\"ok\":false,\"error\":\"invalid name\"}");
                 return;
             }
+
+            if (action == "scan") {
+                BleScanResult results[10];
+                uint8_t count = bleTimecodeScan(results, 10);
+                String json = "{\"count\":" + String(count) + ",\"devices\":[";
+                for (uint8_t i = 0; i < count; i++) {
+                    if (i) json += ',';
+                    json += "{\"name\":\"" + String(results[i].name) +
+                            "\",\"address\":\"" + String(results[i].address) + "\"}";
+                }
+                json += "]}";
+                _server.send(200, "application/json", json);
+                return;
+            }
+
+            if (action == "select") {
+                String address = _server.arg("address");
+                if (address.length()) {
+                    bleTimecodeSelect(address.c_str());
+                    _server.send(200, "application/json", "{\"ok\":true}");
+                    return;
+                }
+                _server.send(400, "application/json",
+                    "{\"ok\":false,\"error\":\"address required\"}");
+                return;
+            }
+
             _server.send(400, "application/json",
-                "{\"ok\":false,\"error\":\"address required\"}");
+                "{\"ok\":false,\"error\":\"unknown action\"}");
             return;
         }
 
-        _server.send(400, "application/json",
-            "{\"ok\":false,\"error\":\"unknown action\"}");
-        return;
+        // GET
+        char body[512];
+        snprintf(body, sizeof(body),
+            "{\"connected\":%s,\"selected\":\"%s\",\"connected_addr\":\"%s\",\"connected_name\":\"%s\",\"name\":\"%s\"}",
+            bleTimecodeConnected() ? "true" : "false",
+            bleTimecodeSelectedAddress(),
+            bleTimecodeConnected() ? bleTimecodeConnectedAddress() : "",
+            bleTimecodeConnected() ? bleTimecodeConnectedName() : "",
+            bleTimecodeGetName());
+        _server.send(200, "application/json", body);
     }
-
-    // GET
-    char body[512];
-    snprintf(body, sizeof(body),
-        "{\"connected\":%s,\"selected\":\"%s\",\"connected_addr\":\"%s\",\"connected_name\":\"%s\",\"name\":\"%s\"}",
-        bleTimecodeConnected() ? "true" : "false",
-        bleTimecodeSelectedAddress(),
-        bleTimecodeConnected() ? bleTimecodeConnectedAddress() : "",
-        bleTimecodeConnected() ? bleTimecodeConnectedName() : "",
-        bleTimecodeGetName());
-    _server.send(200, "application/json", body);
-#endif
 }
 
 // -----------------------------------------------------------------------
@@ -1019,7 +1019,7 @@ html,body{
         tcEl.className=d.source.toLowerCase();
         dotEl.className='status-dot '+d.source.toLowerCase();
         srcEl.textContent=d.source;
-        document.querySelectorAll('.fps-btn').forEach(function(b){
+        document.querySelectorAll('#fps-group .fps-btn').forEach(function(b){
           b.classList.toggle('active',
             (d.auto && parseInt(b.dataset.fps)===0) ||
             (!d.auto && parseInt(b.dataset.fps)===d.fps));
@@ -1105,7 +1105,7 @@ html,body{
   });
 
   // ── FPS buttons ──
-  document.querySelectorAll('.fps-btn').forEach(function(btn){
+  document.querySelectorAll('#fps-group .fps-btn').forEach(function(btn){
     btn.addEventListener('click',function(){
       var fps=parseInt(this.dataset.fps);
       var df=dfChk.checked?1:0;
@@ -1119,7 +1119,7 @@ html,body{
 
   // ── Drop frame toggle ──
   dfChk.addEventListener('change',function(){
-    var active=document.querySelector('.fps-btn.active');
+    var active=document.querySelector('#fps-group .fps-btn.active');
     var fps=active?parseInt(active.dataset.fps):25;
     var df=this.checked?1:0;
     dfLbl.textContent=this.checked?'On':'Off';

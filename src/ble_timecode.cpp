@@ -7,6 +7,7 @@
 #include <BLEAdvertising.h>
 #include <BLEUUID.h>
 #include <BLE2902.h>
+#include <esp_efuse.h>
 #include <Preferences.h>
 #include <string>
 #include <cstring>
@@ -180,11 +181,10 @@ void bleTimecodeInit() {
     blePrefs.begin(NVS_NS, true);
     int savedMode = blePrefs.getInt("mode", BLE_MODE_MASTER);
     g_bleMode = savedMode;
-    blePrefs.end();
 
     if (g_bleMode == BLE_MODE_MASTER) {
-        // Master init
         String saved = blePrefs.getString("name", "TC-LTC-MASTER");
+        blePrefs.end();
         strncpy(m_bleName, saved.c_str(), sizeof(m_bleName) - 1);
         m_bleName[sizeof(m_bleName) - 1] = '\0';
 
@@ -218,14 +218,21 @@ void bleTimecodeInit() {
         adv->setMinPreferred(0x12);
         BLEDevice::startAdvertising();
     } else {
-        // Slave init
-        String savedName = blePrefs.getString("slave_name", "TC-LTC-SLAVE");
+        // Slave init — default name includes MAC suffix for uniqueness
+        uint8_t mac[6] = {};
+        esp_efuse_mac_get_default(mac);
+        char defaultSlaveName[33];
+        snprintf(defaultSlaveName, sizeof(defaultSlaveName), "TC-SLAVE-%02X%02X", mac[4], mac[5]);
+
+        String savedName = blePrefs.getString("slave_name", defaultSlaveName);
+        String saved = blePrefs.getString("master", "");
+        blePrefs.end();
+
         strncpy(s_slaveBleName, savedName.c_str(), sizeof(s_slaveBleName) - 1);
         s_slaveBleName[sizeof(s_slaveBleName) - 1] = '\0';
 
         BLEDevice::init(s_slaveBleName);
 
-        String saved = blePrefs.getString("master", "");
         if (saved.length()) {
             strncpy(s_selectedAddr, saved.c_str(), sizeof(s_selectedAddr) - 1);
             s_selectedAddr[sizeof(s_selectedAddr) - 1] = '\0';

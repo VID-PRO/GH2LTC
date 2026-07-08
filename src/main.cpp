@@ -470,12 +470,6 @@ static void masterLoop() {
 static void slaveSetup() {
     Wire.begin(TC_I2C_SDA_PIN, TC_I2C_SCL_PIN);
 
-    // BLE client init — callback set after init
-    Serial.print(F("BLE client init... "));
-    bleTimecodeInit();
-    bleTimecodeSetCallback(onBleTimecode);
-    Serial.println(F("done"));
-
     // LTC encoder
     ltc.begin();
     ltc.setTime(0, 0, 0, 0);
@@ -559,25 +553,34 @@ void setup() {
 
     // Start WiFi AP + web server BEFORE LTC timer
 #if WEBUI_ENABLE
-    // Build AP SSID from BLE name: if default → "GH2LTC_" + last 4 MAC digits, else use BLE name
+    // Build AP SSID from BLE name: if default → "GH2LTC_" + last 4 MAC digits (master)
+    // or "TC-SLAVE-XXXX" (slave), else use BLE name
     static char apSsid[33];
     {
         Preferences blePrefs;
         blePrefs.begin("ble", true);
-        const char *defaultName = (currentBleMode == BLE_MODE_MASTER) ? "TC-LTC-MASTER" : "TC-LTC-SLAVE";
-        String bleName = blePrefs.getString(
-            (currentBleMode == BLE_MODE_MASTER) ? "name" : "slave_name",
-            defaultName);
-        blePrefs.end();
+        uint8_t mac[6] = {};
+        esp_efuse_mac_get_default(mac);
+        char macSuffix[8];
+        snprintf(macSuffix, sizeof(macSuffix), "%02X%02X", mac[4], mac[5]);
 
-        if (bleName == "TC-LTC-MASTER" || bleName == "TC-LTC-SLAVE") {
-            uint8_t mac[6] = {};
-            esp_efuse_mac_get_default(mac);
-            snprintf(apSsid, sizeof(apSsid), "GH2LTC_%02X%02X", mac[4], mac[5]);
+        if (currentBleMode == BLE_MODE_MASTER) {
+            String bleName = blePrefs.getString("name", "TC-LTC-MASTER");
+            if (bleName == "TC-LTC-MASTER") {
+                snprintf(apSsid, sizeof(apSsid), "GH2LTC_%s", macSuffix);
+            } else {
+                strncpy(apSsid, bleName.c_str(), sizeof(apSsid) - 1);
+                apSsid[sizeof(apSsid) - 1] = '\0';
+            }
         } else {
+            // Slave: default is "TC-SLAVE-XXXX", custom name replaces it
+            char defaultSlaveName[33];
+            snprintf(defaultSlaveName, sizeof(defaultSlaveName), "TC-SLAVE-%s", macSuffix);
+            String bleName = blePrefs.getString("slave_name", defaultSlaveName);
             strncpy(apSsid, bleName.c_str(), sizeof(apSsid) - 1);
             apSsid[sizeof(apSsid) - 1] = '\0';
         }
+        blePrefs.end();
     }
     Serial.print(F("Starting WiFi AP... "));
     Serial.println(apSsid);
@@ -643,6 +646,14 @@ void setup() {
         }
     });
 #endif
+
+    // Init BLE (starts server for master, scanner for slave)
+    {
+        Serial.print(F("BLE init... "));
+        bleTimecodeInit();
+        bleTimecodeSetCallback(onBleTimecode);
+        Serial.println(F("done"));
+    }
 
     if (currentBleMode == BLE_MODE_MASTER) {
         masterSetup();

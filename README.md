@@ -167,11 +167,11 @@ src/logo_data.h               PROGMEM byte array for logo.png
 
 | Scenario | Behavior |
 |----------|----------|
-| No WiFi configured | Opens AP `GH2LTC_XXXX` (open, `192.168.4.1`) where XXXX = last 4 MAC digits |
+| No WiFi configured | Opens AP with default SSID (master: `GH2LTC_XXXX`, slave: `TC-SLAVE-XXXX`), open network, `192.168.4.1` |
 | Saved credentials exist | Connects as STA on boot; AP auto-disables on connect |
 | STA disconnected >5 s | AP re-enabled for reconfiguration |
 
-The AP SSID is `GH2LTC_` + last 4 MAC hex digits by default. If you set a custom BLE name via the web UI, the AP SSID uses that name instead.
+The AP SSID is derived from the BLE name: if the default is used (master: `TC-LTC-MASTER`, slave: `TC-SLAVE-XXXX`), the SSID is `GH2LTC_` + last 4 MAC digits (master) or `TC-SLAVE-` + last 4 MAC digits (slave). Setting a custom BLE name via the web UI replaces the SSID with that name.
 
 ---
 
@@ -196,7 +196,7 @@ Open `http://192.168.4.1` (AP mode) or the ESP's STA IP. The header displays a c
 
 | Setting | Master (HDMI + BLE server) | Slave (BLE client, no HDMI) |
 |---------|---------------------------|-----------------------------|
-| WiFi AP SSID | `GH2LTC_` + last 4 MAC digits | same |
+| WiFi AP SSID | `GH2LTC_` + last 4 MAC digits | `TC-SLAVE-` + last 4 MAC digits |
 | WiFi AP security | Open | Open |
 | FPS | Auto (re-detect) | 25 |
 | Drop frame | Off | Off |
