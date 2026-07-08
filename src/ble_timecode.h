@@ -12,7 +12,16 @@ void bleTimecodeUpdate(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_t f
 void bleTimecodeSetName(const char *name);
 const char *bleTimecodeGetName();
 void bleTimecodeDisconnectAll();
+void bleTimecodeDisconnectPeer(const char *address);
 uint8_t bleTimecodeConnectedCount();
+
+typedef struct {
+    char address[18];
+    char name[33];
+    uint16_t connId;
+} BlePeerInfo;
+
+uint8_t bleTimecodeGetPeers(BlePeerInfo *peers, uint8_t maxPeers);
 
 #elif defined(BLE_SLAVE)
 typedef void (*BleTimecodeCb)(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff);
@@ -30,4 +39,6 @@ void bleTimecodeSelect(const char *address);
 const char *bleTimecodeSelectedAddress();
 const char *bleTimecodeConnectedAddress();
 const char *bleTimecodeConnectedName();
+void bleTimecodeSetName(const char *name);
+const char *bleTimecodeGetName();
 #endif

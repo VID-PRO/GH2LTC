@@ -345,21 +345,50 @@ void WebUI::handleApiBle() {
             return;
         }
 
+        if (action == "disconnect_peer") {
+            String addr = _server.arg("address");
+            if (addr.length()) {
+                bleTimecodeDisconnectPeer(addr.c_str());
+                _server.send(200, "application/json", "{\"ok\":true}");
+                return;
+            }
+            _server.send(400, "application/json",
+                "{\"ok\":false,\"error\":\"address required\"}");
+            return;
+        }
+
         _server.send(400, "application/json",
             "{\"ok\":false,\"error\":\"unknown action\"}");
         return;
     }
 
-    // GET
-    char body[256];
-    snprintf(body, sizeof(body),
-        "{\"name\":\"%s\",\"connected\":%u}",
-        bleTimecodeGetName(), bleTimecodeConnectedCount());
-    _server.send(200, "application/json", body);
+    // GET — return master name + peer list
+    BlePeerInfo peerBuf[8];
+    uint8_t n = bleTimecodeGetPeers(peerBuf, 8);
+    String json = "{\"name\":\"" + String(bleTimecodeGetName()) + "\",\"peers\":[";
+    for (uint8_t i = 0; i < n; i++) {
+        if (i) json += ',';
+        json += "{\"addr\":\"" + String(peerBuf[i].address) + "\",\"name\":\"" + String(peerBuf[i].name) + "\"}";
+    }
+    json += "]}";
+    _server.send(200, "application/json", json);
 
 #elif defined(BLE_SLAVE)
     if (_server.method() == HTTP_POST) {
         String action = _server.arg("action");
+
+        if (action == "setname") {
+            String name = _server.arg("name");
+            if (name.length() > 0 && name.length() <= 32) {
+                bleTimecodeSetName(name.c_str());
+                _server.send(200, "application/json",
+                    "{\"ok\":true,\"reboot\":true}");
+                return;
+            }
+            _server.send(400, "application/json",
+                "{\"ok\":false,\"error\":\"invalid name\"}");
+            return;
+        }
 
         if (action == "scan") {
             BleScanResult results[10];
@@ -395,11 +424,12 @@ void WebUI::handleApiBle() {
     // GET
     char body[512];
     snprintf(body, sizeof(body),
-        "{\"connected\":%s,\"selected\":\"%s\",\"connected_addr\":\"%s\",\"connected_name\":\"%s\"}",
+        "{\"connected\":%s,\"selected\":\"%s\",\"connected_addr\":\"%s\",\"connected_name\":\"%s\",\"name\":\"%s\"}",
         bleTimecodeConnected() ? "true" : "false",
         bleTimecodeSelectedAddress(),
         bleTimecodeConnected() ? bleTimecodeConnectedAddress() : "",
-        bleTimecodeConnected() ? bleTimecodeConnectedName() : "");
+        bleTimecodeConnected() ? bleTimecodeConnectedName() : "",
+        bleTimecodeGetName());
     _server.send(200, "application/json", body);
 #endif
 }
@@ -432,25 +462,30 @@ void WebUI::handleRoot() {
 #ifndef BLE_SLAVE
     html.replace("__BLE_HTML__",
         "<div class=\"ble-section\">"
-        "<div class=\"settings-title\">BLE Master</div>"
+        "<div class=\"settings-title\">BLE Setup</div>"
         "<div class=\"ble-form\">"
         "<div class=\"row\">"
         "<input type=\"text\" id=\"ble-name-input\" value=\"" + String(bleTimecodeGetName()) + "\" maxlength=\"32\">"
         "<button onclick=\"bleSetName()\">Save Name</button>"
         "</div>"
         "<div class=\"row\">"
-        "<span>Slaves: <span id=\"ble-connected\">0</span></span>"
-        "<button class=\"wifi-forget-btn\" onclick=\"bleDisconnect()\">Disconnect All</button>"
+        "<button class=\"wifi-forget-btn\" onclick=\"bleDisconnectAll()\">Disconnect All</button>"
         "</div>"
+        "<div id=\"ble-peers\"></div>"
         "<div class=\"ble-msg\" id=\"ble-msg\"></div>"
         "</div></div>");
 #else
     html.replace("__BLE_HTML__",
         "<div class=\"ble-section\">"
-        "<div class=\"settings-title\">BLE Master</div>"
+        "<div class=\"settings-title\">BLE Setup</div>"
+        "<div class=\"ble-form\">"
+        "<div class=\"row\">"
+        "<input type=\"text\" id=\"ble-name-input\" value=\"" + String(bleTimecodeGetName()) + "\" maxlength=\"32\">"
+        "<button onclick=\"bleSetName()\">Save Name</button>"
+        "</div>"
+        "</div>"
         "<div class=\"ble-status\">"
         "Status: <span id=\"ble-status\">—</span>"
-        "&nbsp;|&nbsp; Master: <span id=\"ble-master\">—</span>"
         "</div>"
         "<div class=\"ble-form\">"
         "<button onclick=\"bleScan()\" id=\"ble-scan-btn\">Scan</button>"
@@ -481,14 +516,23 @@ void WebUI::handleRoot() {
         "};"
         "x.send('action=setname&name='+encodeURIComponent(n));"
         "}"
-        "function bleDisconnect(){"
+        "function bleDisconnectAll(){"
         "var x=new XMLHttpRequest();"
         "x.open('POST','/api/ble',true);"
         "x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');"
         "x.onload=function(){if(x.status==200){"
-        "document.getElementById('ble-msg').textContent='Disconnected'"
+        "document.getElementById('ble-msg').textContent='Disconnected all'"
         "}};"
         "x.send('action=disconnect');"
+        "}"
+        "function bleDisconnectPeer(addr){"
+        "var x=new XMLHttpRequest();"
+        "x.open('POST','/api/ble',true);"
+        "x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');"
+        "x.onload=function(){if(x.status==200){"
+        "document.getElementById('ble-msg').textContent='Disconnected '+addr"
+        "}};"
+        "x.send('action=disconnect_peer&address='+encodeURIComponent(addr));"
         "}"
         "setInterval(function(){"
         "var x=new XMLHttpRequest();"
@@ -496,13 +540,46 @@ void WebUI::handleRoot() {
         "x.onload=function(){"
         "if(x.status!=200)return;"
         "try{var d=JSON.parse(x.responseText);"
-        "var el=document.getElementById('ble-connected');"
-        "if(el)el.textContent=d.connected;"
+        "var el=document.getElementById('ble-peers');"
+        "if(!el)return;"
+        "var h='';"
+        "if(d.peers&&d.peers.length){"
+        "h='<div class=\"ble-subtitle\">Connected Peers</div>';"
+        "for(var i=0;i<d.peers.length;i++){"
+        "h+='<div class=\"ble-peer\">';"
+        "h+='<span>'+(d.peers[i].name||d.peers[i].addr)+'</span>';"
+        "h+='<button onclick=\"bleDisconnectPeer(\\''+d.peers[i].addr+'\\')\">Disconnect</button>';"
+        "h+='</div>';"
+        "}"
+        "} else {"
+        "h='<div class=\"ble-subtitle\" style=\"color:#444\">No slaves connected</div>';"
+        "}"
+        "el.innerHTML=h;"
         "}catch(e){}"
         "};"
         "x.send();"
         "},3000);"
 #else
+        "function bleSetName(){"
+        "var n=document.getElementById('ble-name-input').value;"
+        "if(!n)return;"
+        "var x=new XMLHttpRequest();"
+        "x.open('POST','/api/ble',true);"
+        "x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');"
+        "x.onload=function(){"
+        "if(x.status==200){"
+        "var d=JSON.parse(x.responseText);"
+        "if(d.reboot){"
+        "document.getElementById('ble-msg').textContent='Saved. Rebooting...';"
+        "setTimeout(function(){location.reload()},2000);"
+        "} else document.getElementById('ble-msg').textContent='OK';"
+        "} else {"
+        "try{document.getElementById('ble-msg').textContent=JSON.parse(x.responseText).error}"
+        "catch(e){document.getElementById('ble-msg').textContent='Error'}"
+        "}"
+        "};"
+        "x.send('action=setname&name='+encodeURIComponent(n));"
+        "}"
         "function bleScan(){"
         "var btn=document.getElementById('ble-scan-btn');"
         "btn.disabled=true;btn.textContent='Scanning...';"
@@ -519,7 +596,6 @@ void WebUI::handleRoot() {
         "for(var i=0;i<d.count;i++){"
         "h+='<div class=\"ble-device\">';"
         "h+='<span>'+d.devices[i].name+'</span>';"
-        "h+='<span class=\"ble-addr\">'+d.devices[i].address+'</span>';"
         "h+='<button onclick=\"bleSelect(\\''+d.devices[i].address+'\\')\">Connect</button>';"
         "h+='</div>';"
         "}"
@@ -545,8 +621,6 @@ void WebUI::handleRoot() {
         "try{var d=JSON.parse(x.responseText);"
         "var el=document.getElementById('ble-status');"
         "if(el)el.textContent=d.connected?'Connected ('+d.connected_name+')':'Disconnected';"
-        "var el2=document.getElementById('ble-master');"
-        "if(el2)el2.textContent=d.selected||'—';"
         "}catch(e){}"
         "};"
         "x.send();"
@@ -812,7 +886,12 @@ html,body{
   background:#00ffbb;border:none;cursor:pointer
 
 /* BLE config */
-.ble-section{margin-top:12px;padding-top:12px;border-top:1px solid #1a1a1a}
+.ble-drawer-section{margin-top:12px;padding-top:12px;border-top:1px solid #1a1a1a}
+.ble-section{
+  margin-top:8px;padding-top:12px;border-top:1px solid #1a1a1a;
+  color:#444;font-size:clamp(9px,1.5vw,11px)
+}
+.ble-section span{color:#666}
 .ble-status{font-size:clamp(9px,1.5vw,11px);color:#444;margin-bottom:10px}
 .ble-status span{color:#666}
 .ble-form{display:flex;flex-direction:column;gap:8px}
@@ -848,6 +927,23 @@ html,body{
   cursor:pointer
 }
 .ble-device button:hover{background:#0a2a1a}
+.ble-subtitle{
+  color:#555;font-size:clamp(10px,1.5vw,12px);
+  text-transform:uppercase;letter-spacing:.1em;
+  margin:8px 0 4px
+}
+.ble-peer{
+  display:flex;gap:16px;align-items:center;
+  padding:4px 0;font-size:clamp(11px,1.8vw,13px)
+}
+.ble-peer span{flex:1}
+.ble-peer button{
+  background:transparent;border:1px solid #441a1a;border-radius:4px;
+  color:#884444;padding:3px 10px;
+  font-family:inherit;font-size:clamp(9px,1.3vw,11px);
+  cursor:pointer
+}
+.ble-peer button:hover{background:#1a0a0a;border-color:#664444}
 }
 .brightness-val{
   color:#00ffbb;font-size:clamp(12px,2vw,14px);
@@ -967,9 +1063,10 @@ html,body{
     AP <span>__AP_SSID__</span> &nbsp;|&nbsp; <span>__AP_IP__</span><br>
     STA <span>__STA_SSID__</span> &nbsp;|&nbsp; <span>__STA_IP__</span>
   </div>
+  <div class="ble-drawer-section">
+  __BLE_HTML__
+  </div>
 </div>
-
-__BLE_HTML__
 
 <script>
 (function(){

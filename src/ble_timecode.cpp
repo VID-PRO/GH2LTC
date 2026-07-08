@@ -9,6 +9,8 @@
 #include <Preferences.h>
 #include <string>
 #include <cstring>
+#include <vector>
+#include <algorithm>
 
 static Preferences blePrefs;
 static const char *NVS_NS = "ble";
@@ -27,12 +29,42 @@ static BLECharacteristic *tcChar = nullptr;
 static bool deviceConnected = false;
 static char bleName[33] = "TC-LTC-MASTER";
 
+struct PeerInfo {
+    char address[18];
+    char name[33];
+    uint16_t connId;
+};
+static std::vector<PeerInfo> peers;
+static bool pendingNameScan = false;
+static unsigned long lastPeerScan = 0;
+
 class ServerCallbacks : public BLEServerCallbacks {
-    void onConnect(BLEServer *) override {
+    void onConnect(BLEServer *pServer) override {
         deviceConnected = true;
     }
-    void onDisconnect(BLEServer *) override {
+    void onConnect(BLEServer *pServer, esp_ble_gatts_cb_param_t *param) override {
+        deviceConnected = true;
+        PeerInfo pi;
+        snprintf(pi.address, sizeof(pi.address),
+                 "%02x:%02x:%02x:%02x:%02x:%02x",
+                 param->connect.remote_bda[5], param->connect.remote_bda[4],
+                 param->connect.remote_bda[3], param->connect.remote_bda[2],
+                 param->connect.remote_bda[1], param->connect.remote_bda[0]);
+        pi.name[0] = '\0';
+        pi.connId = param->connect.conn_id;
+        peers.push_back(pi);
+        pendingNameScan = true;
+    }
+    void onDisconnect(BLEServer *pServer) override {
         deviceConnected = false;
+        peers.clear();
+        BLEDevice::getAdvertising()->start();
+    }
+    void onDisconnect(BLEServer *pServer, esp_ble_gatts_cb_param_t *param) override {
+        uint16_t cid = param->disconnect.conn_id;
+        peers.erase(std::remove_if(peers.begin(), peers.end(),
+            [cid](const PeerInfo &p) { return p.connId == cid; }), peers.end());
+        deviceConnected = !peers.empty();
         BLEDevice::getAdvertising()->start();
     }
 };
@@ -51,14 +83,39 @@ void bleTimecodeSetName(const char *name) {
 
 void bleTimecodeDisconnectAll() {
     if (!server) return;
-    std::map<uint16_t, conn_status_t> peers = server->getPeerDevices(false);
     for (auto &p : peers) {
-        server->disconnect(p.first);
+        server->disconnect(p.connId);
+    }
+    peers.clear();
+}
+
+void bleTimecodeDisconnectPeer(const char *address) {
+    if (!server) return;
+    for (auto it = peers.begin(); it != peers.end(); ++it) {
+        if (strcmp(it->address, address) == 0) {
+            server->disconnect(it->connId);
+            peers.erase(it);
+            break;
+        }
     }
 }
 
 uint8_t bleTimecodeConnectedCount() {
-    return server ? server->getConnectedCount() : 0;
+    return peers.size();
+}
+
+uint8_t bleTimecodeGetPeers(BlePeerInfo *out, uint8_t maxPeers) {
+    uint8_t count = 0;
+    for (auto &p : peers) {
+        if (count >= maxPeers) break;
+        strncpy(out[count].address, p.address, sizeof(out[count].address) - 1);
+        out[count].address[sizeof(out[count].address) - 1] = '\0';
+        strncpy(out[count].name, p.name, sizeof(out[count].name) - 1);
+        out[count].name[sizeof(out[count].name) - 1] = '\0';
+        out[count].connId = p.connId;
+        count++;
+    }
+    return count;
 }
 
 void bleTimecodeInit() {
@@ -80,6 +137,7 @@ void bleTimecodeInit() {
     tcChar->addDescriptor(new BLE2902());
     uint8_t init[5] = {0, 0, 0, 0, 0};
     tcChar->setValue(init, 5);
+
     svc->start();
 
     BLEAdvertising *adv = BLEDevice::getAdvertising();
@@ -95,6 +153,41 @@ void bleTimecodeUpdate(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_t f
     uint8_t data[5] = {dd, hh, mm, ss, ff};
     tcChar->setValue(data, 5);
     tcChar->notify();
+
+    // Periodically resolve names of connected peers via BLE scan
+    unsigned long now = millis();
+    if ((pendingNameScan || now - lastPeerScan > 30000) && !peers.empty()) {
+        lastPeerScan = now;
+        pendingNameScan = false;
+        BLEScan *scan = BLEDevice::getScan();
+        scan->setAdvertisedDeviceCallbacks(nullptr);
+        scan->setActiveScan(true);
+        scan->setInterval(100);
+        scan->setWindow(50);
+        BLEScanResults results = scan->start(2, false);
+        for (int i = 0; i < results.getCount(); i++) {
+            BLEAdvertisedDevice dev = results.getDevice(i);
+            if (!dev.haveName()) continue;
+            BLEAddress addr = dev.getAddress();
+            char addrStr[18];
+            snprintf(addrStr, sizeof(addrStr),
+                     "%02x:%02x:%02x:%02x:%02x:%02x",
+                     (*addr.getNative())[5], (*addr.getNative())[4],
+                     (*addr.getNative())[3], (*addr.getNative())[2],
+                     (*addr.getNative())[1], (*addr.getNative())[0]);
+            for (auto &p : peers) {
+                if (strcmp(p.address, addrStr) == 0) {
+                    const char *dn = dev.getName().c_str();
+                    if (dn && dn[0]) {
+                        strncpy(p.name, dn, sizeof(p.name) - 1);
+                        p.name[sizeof(p.name) - 1] = '\0';
+                    }
+                    break;
+                }
+            }
+        }
+        scan->clearResults();
+    }
 }
 
 // =========================================================================
@@ -110,6 +203,7 @@ static unsigned long lastScan = 0;
 static char selectedAddr[18] = "";
 static char connectedAddr[18] = "";
 static char connectedName[33] = "";
+static char slaveBleName[33] = "TC-LTC-SLAVE";
 
 class ClientCallbacks : public BLEClientCallbacks {
     void onConnect(BLEClient *) override {
@@ -170,16 +264,20 @@ static bool tryConnect(BLEAdvertisedDevice &dev) {
         strncpy(connectedName, dn, sizeof(connectedName) - 1);
         connectedName[sizeof(connectedName) - 1] = '\0';
     } else {
-        connectedName[0] = '\0';
+        snprintf(connectedName, sizeof(connectedName),
+                 "TC-MASTER-%s", connectedAddr + 9);
     }
     return true;
 }
 
 void bleTimecodeInit() {
-    BLEDevice::init("TC-LTC-SLAVE");
     blePrefs.begin(NVS_NS, true);
     String saved = blePrefs.getString("master", "");
+    String savedName = blePrefs.getString("slave_name", "TC-LTC-SLAVE");
     blePrefs.end();
+    strncpy(slaveBleName, savedName.c_str(), sizeof(slaveBleName) - 1);
+    slaveBleName[sizeof(slaveBleName) - 1] = '\0';
+    BLEDevice::init(slaveBleName);
     if (saved.length()) {
         strncpy(selectedAddr, saved.c_str(), sizeof(selectedAddr) - 1);
         selectedAddr[sizeof(selectedAddr) - 1] = '\0';
@@ -300,6 +398,18 @@ const char *bleTimecodeConnectedAddress() {
 
 const char *bleTimecodeConnectedName() {
     return connectedName;
+}
+
+const char *bleTimecodeGetName() {
+    return slaveBleName;
+}
+
+void bleTimecodeSetName(const char *name) {
+    strncpy(slaveBleName, name, sizeof(slaveBleName) - 1);
+    slaveBleName[sizeof(slaveBleName) - 1] = '\0';
+    blePrefs.begin(NVS_NS, false);
+    blePrefs.putString("slave_name", slaveBleName);
+    blePrefs.end();
 }
 
 #endif
