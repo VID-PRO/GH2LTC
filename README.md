@@ -1,4 +1,4 @@
-# [VID-PRO](https://www.vid-prot.de) GH5-LTC-ESP
+# [VID-PRO](https://www.vid-prot.de) GH2LTC
 
 Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-12M LTC audio on an ESP32-C3 Super Mini with an 8×8 LED matrix display, full web UI, and **BLE wireless slave sync**.
 
