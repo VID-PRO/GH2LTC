@@ -219,9 +219,15 @@ void setup() {
     // fires at several kHz and can interfere with WiFi RF calibration if it's
     // already running during softAP().  Give the WiFi stack a clean window.
 #if WEBUI_ENABLE
-    Serial.print(F("Starting WiFi AP... "));
-    webui.begin(WEBUI_AP_SSID, WEBUI_AP_PASSWORD,
-                WEBUI_STA_SSID, WEBUI_STA_PASSWORD);
+    // Register callbacks BEFORE begin() — begin() loads NVS and fires them
+#if MAX7219_ENABLE
+    webui.onSetBrightness([](uint8_t val) {
+        mx7219.setIntensity(val);
+    });
+    webui.onSetMatrixEnabled([](bool en) {
+        if (!en) mx7219.clear();
+    });
+#endif
     webui.onSetFps([](uint8_t fps, bool df) {
         ltc.setFps(fps, df);
         framePollMs = 1000 / fps;
@@ -241,14 +247,10 @@ void setup() {
         ltc.setDd(dd);
         Serial.printf("jam %02u:%02u:%02u:%02u:%02u\n", dd, hh, mm, ss, ff);
     });
-#if MAX7219_ENABLE
-    webui.onSetBrightness([](uint8_t val) {
-        mx7219.setIntensity(val);
-    });
-    webui.onSetMatrixEnabled([](bool en) {
-        if (!en) mx7219.clear();
-    });
-#endif
+
+    Serial.print(F("Starting WiFi AP... "));
+    webui.begin(WEBUI_AP_SSID, WEBUI_AP_PASSWORD,
+                WEBUI_STA_SSID, WEBUI_STA_PASSWORD);
 
     // WiFi event logging for AP debugging
     WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
