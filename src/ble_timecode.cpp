@@ -109,9 +109,7 @@ static bool connected = false;
 static unsigned long lastScan = 0;
 static char selectedAddr[18] = "";
 static char connectedAddr[18] = "";
-static BleScanResult cachedResults[10];
-static uint8_t cachedCount = 0;
-static bool scanPending = false;
+static char connectedName[33] = "";
 
 class ClientCallbacks : public BLEClientCallbacks {
     void onConnect(BLEClient *) override {
@@ -122,6 +120,7 @@ class ClientCallbacks : public BLEClientCallbacks {
         client = nullptr;
         remoteChar = nullptr;
         connectedAddr[0] = '\0';
+        connectedName[0] = '\0';
     }
 };
 
@@ -159,13 +158,20 @@ static bool tryConnect(BLEAdvertisedDevice &dev) {
     remoteChar->registerForNotify(notifyCallback);
     connected = true;
 
-    // Save connected address
+    // Save connected address and name
     BLEAddress addr = dev.getAddress();
     snprintf(connectedAddr, sizeof(connectedAddr),
              "%02x:%02x:%02x:%02x:%02x:%02x",
              (*addr.getNative())[5], (*addr.getNative())[4],
              (*addr.getNative())[3], (*addr.getNative())[2],
              (*addr.getNative())[1], (*addr.getNative())[0]);
+    const char *dn = dev.getName().c_str();
+    if (dn && dn[0]) {
+        strncpy(connectedName, dn, sizeof(connectedName) - 1);
+        connectedName[sizeof(connectedName) - 1] = '\0';
+    } else {
+        connectedName[0] = '\0';
+    }
     return true;
 }
 
@@ -290,6 +296,10 @@ const char *bleTimecodeSelectedAddress() {
 
 const char *bleTimecodeConnectedAddress() {
     return connectedAddr;
+}
+
+const char *bleTimecodeConnectedName() {
+    return connectedName;
 }
 
 #endif

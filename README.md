@@ -1,4 +1,4 @@
-# <img alt="logo" src="Logo/vid-pro.png" height="36" /> GH5-LTC-ESP
+# [VID-PRO](https://www.vid-prot.de) GH5-LTC-ESP
 
 Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-12M LTC audio on an ESP32-C3 Super Mini with an 8×8 LED matrix display, full web UI, and **BLE wireless slave sync**.
 
@@ -17,7 +17,7 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 | **Web UI** | Fullscreen dark-teal SPA: timecode display, Auto/fixed FPS config, jam sync, brightness slider, matrix on/off, WiFi config |
 | **WiFi** | AP `TC-LTC-GENERATOR` on boot; auto-STA connect to saved network; AP re-enables on disconnect |
 | **Reverse-engineer mode** | Dumps InfoFrame packets over serial to find GH5's exact timecode byte layout |
-| **BLE wireless sync** | Master advertises timecode via BLE notify; slave scans, connects, and runs local LTC + displays |
+| **BLE wireless sync** | Master advertises timecode via BLE notify; slave scans by service UUID, selects a master, subscribes to notifications, and runs local LTC + displays. Slave web UI shows the connected master's device name. Master name and disconnect configurable via web UI. |
 
 ---
 
@@ -128,18 +128,20 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 
 ```
 platformio.ini
-src/config.h              pin assignments, feature toggles (master & slave via BLE_MASTER/BLE_SLAVE)
-src/main.cpp              master entry point: HDMI → LTC + BLE server
-src/slave_main.cpp        slave entry point: BLE client → LTC + MAX7219 + web UI
-src/webui.{h,cpp}         WiFi AP/STA, HTTP server, NVS, embedded JS/CSS/HTML
-src/ble_timecode.{h,cpp}  BLE master (server/advertise/notify) & slave (scan/connect/subscribe)
-src/ltc_encoder.{h,cpp}   esp_timer-based SMPTE-12M LTC generator
-src/max7219_display.{h,cpp} MAX7219 64×8 framebuffer driver
-src/panasonic_tc.h        <-- fill in your GH5 timecode byte layout here
-src/tc358743.{h,cpp}      minimal I2C driver + bitBangProbe()
-src/oled_display.{h,cpp}  optional SSD1306 via U8g2
-src/ds3231.{h,cpp}        optional RTC driver
-src/logo_data.h           PROGMEM byte array for logo.png (excluded on BLE_SLAVE)
+src/config.h                  pin assignments, feature toggles
+src/config_master.h           includes config.h, defines BLE_MASTER (force-included in env:master via -include)
+src/config_slave.h            includes config.h, defines BLE_SLAVE, disables HDMI/RTC/OLED (force-included in env:slave)
+src/main.cpp                  master entry point: HDMI → LTC + BLE server
+src/slave_main.cpp            slave entry point: BLE client → LTC + MAX7219 + web UI
+src/webui.{h,cpp}             WiFi AP/STA, HTTP server, NVS, embedded JS/CSS/HTML
+src/ble_timecode.{h,cpp}      BLE master (server/advertise/notify) & slave (scan/select/connect/subscribe)
+src/ltc_encoder.{h,cpp}       esp_timer-based SMPTE-12M LTC generator
+src/max7219_display.{h,cpp}   MAX7219 64×8 framebuffer driver
+src/panasonic_tc.h            <-- fill in your GH5 timecode byte layout here
+src/tc358743.{h,cpp}          minimal I2C driver + bitBangProbe()
+src/oled_display.{h,cpp}      optional SSD1306 via U8g2
+src/ds3231.{h,cpp}            optional RTC driver
+src/logo_data.h               PROGMEM byte array for logo.png (excluded on BLE_SLAVE)
 ```
 
 ---
@@ -165,7 +167,7 @@ src/logo_data.h           PROGMEM byte array for logo.png (excluded on BLE_SLAVE
 
 ## Web Interface
 
-Open `http://192.168.4.1` (AP mode) or the ESP's STA IP.
+Open `http://192.168.4.1` (AP mode) or the ESP's STA IP. The header displays a centered **VID-PRO** link (https://www.vid-prot.de).
 
 | Feature | Description |
 |---------|-------------|
@@ -175,6 +177,8 @@ Open `http://192.168.4.1` (AP mode) or the ESP's STA IP.
 | **Brightness** | Slider for MAX7219 intensity (0–15), saved to NVS |
 | **Matrix toggle** | Enable/disable LED matrix display at runtime, saved to NVS |
 | **WiFi config** | SSID/password input, saved to NVS, forget option |
+| **BLE (master)** | Change broadcast name, view connected slave count, disconnect all |
+| **BLE (slave)** | Scan for master devices (name + address), tap to connect, view connected master name
 
 ---
 
@@ -202,17 +206,19 @@ Open `http://192.168.4.1` (AP mode) or the ESP's STA IP.
 
 A custom 128-bit BLE service (`9a6f0001-...`) transfers timecode from master to slave as 5-byte notifications (dd, hh, mm, ss, ff):
 
-- **Master**: advertises the service, sends a notification on every frame tick via `bleTimecodeUpdate()`.
-- **Slave**: scans for the service, connects, subscribes to notifications. On receiving a timecode packet it jams the local `LtcEncoder` in real time.
+- **Master**: advertises the service, sends a notification on every frame tick via `bleTimecodeUpdate()`. Broadcast name configurable via web UI; disconnect button removes all connected slaves.
+- **Slave**: scans for devices offering the service (showing name + signal strength), taps one to connect. On receiving a timecode packet it jams the local `LtcEncoder` in real time. The web UI displays the connected master's device name.
 
-The slave runs its own independent LTC generator, OLED (if fitted), MAX7219 matrix, and web UI — exactly like the master but without HDMI/RTC hardware. BLE and WiFi share the single ESP32-C3 radio via time-division multiplexing.
+The slave runs its own independent LTC generator, MAX7219 matrix, and web UI — exactly like the master but without HDMI/RTC/OLED hardware. BLE and WiFi share the single ESP32-C3 radio via time-division multiplexing.
 
-### Build flags
+### Role selection
 
-| Role | Flag |
-|------|------|
-| Master | `-D BLE_MASTER` (automatic in `[env:master]`) |
-| Slave | `-D BLE_SLAVE`  (automatic in `[env:slave]`) |
+Each PlatformIO environment force-includes the corresponding config header at compile time via `-include` (no `-D` flags in `build_flags`):
+
+| Role | Config header | Environment |
+|------|--------------|-------------|
+| Master | `src/config_master.h` | `env:master` |
+| Slave  | `src/config_slave.h`  | `env:slave` |
 
 ---
 

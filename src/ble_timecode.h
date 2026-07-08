@@ -29,4 +29,5 @@ uint8_t bleTimecodeScan(BleScanResult *results, uint8_t maxResults);
 void bleTimecodeSelect(const char *address);
 const char *bleTimecodeSelectedAddress();
 const char *bleTimecodeConnectedAddress();
+const char *bleTimecodeConnectedName();
 #endif

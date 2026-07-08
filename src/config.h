@@ -80,23 +80,3 @@
 // Operating mode
 // ---------------------------------------------------------------------------
 #define REVERSE_ENGINEER_MODE 1
-
-// ---------------------------------------------------------------------------
-// Slave mode overrides (BLE_SLAVE defined in build_flags for slave env)
-// ---------------------------------------------------------------------------
-#ifdef BLE_SLAVE
-#undef TC_RESET_PIN
-#undef RTC_ENABLE
-#undef OLED_ENABLE
-#undef FPS_AUTO_DETECT
-#undef REVERSE_ENGINEER_MODE
-
-#define TC_RESET_PIN          -1
-#define RTC_ENABLE            0
-#define OLED_ENABLE           0
-#define FPS_AUTO_DETECT       0
-#define REVERSE_ENGINEER_MODE 0
-
-#undef WEBUI_AP_SSID
-#define WEBUI_AP_SSID        "TC-LTC-SLAVE"
-#endif

@@ -393,12 +393,13 @@ void WebUI::handleApiBle() {
     }
 
     // GET
-    char body[384];
+    char body[512];
     snprintf(body, sizeof(body),
-        "{\"connected\":%s,\"selected\":\"%s\",\"connected_addr\":\"%s\"}",
+        "{\"connected\":%s,\"selected\":\"%s\",\"connected_addr\":\"%s\",\"connected_name\":\"%s\"}",
         bleTimecodeConnected() ? "true" : "false",
         bleTimecodeSelectedAddress(),
-        bleTimecodeConnected() ? bleTimecodeConnectedAddress() : "");
+        bleTimecodeConnected() ? bleTimecodeConnectedAddress() : "",
+        bleTimecodeConnected() ? bleTimecodeConnectedName() : "");
     _server.send(200, "application/json", body);
 #endif
 }
@@ -543,7 +544,7 @@ void WebUI::handleRoot() {
         "if(x.status!=200)return;"
         "try{var d=JSON.parse(x.responseText);"
         "var el=document.getElementById('ble-status');"
-        "if(el)el.textContent=d.connected?'Connected ('+d.connected_addr+')':'Disconnected';"
+        "if(el)el.textContent=d.connected?'Connected ('+d.connected_name+')':'Disconnected';"
         "var el2=document.getElementById('ble-master');"
         "if(el2)el2.textContent=d.selected||'—';"
         "}catch(e){}"
@@ -628,13 +629,11 @@ html,body{
   margin-left:auto;
   display:flex;align-items:center
 }
-.logo{
+.header-brand{
   position:absolute;left:50%;transform:translateX(-50%);
-  max-width:clamp(120px,35vw,320px);
-  max-height:calc(var(--bar-height) - 12px);
-  height:auto;width:auto;
-  opacity:.85;
-  flex-shrink:0
+  color:#00ffbb;font-weight:700;font-size:clamp(14px,3vw,22px);
+  text-decoration:none;letter-spacing:2px;
+  top:50%;transform:translate(-50%,-50%)
 }
 
 /* ── timecode area (fills all space between status-bar and bottom) ── */
@@ -870,7 +869,7 @@ html,body{
     <span class="status-dot hdmi" id="status-dot"></span>
     <span id="source-label">HDMI</span>
   </div>
-  __LOGO_HTML__
+  <a class="header-brand" href="https://www.vid-prot.de" target="_blank" rel="noopener">VID-PRO</a>
   <div class="header-right">
     <span class="fps-badge" id="fps-badge">25 fps</span>
   </div>
