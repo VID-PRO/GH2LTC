@@ -4,6 +4,9 @@ on:
   release:
     types: [published]
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -25,14 +28,14 @@ jobs:
         run: pio run -e slave
 
       - name: Upload firmware to release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            .pio/build/master/firmware.bin
-            .pio/build/master/bootloader.bin
-            .pio/build/master/partitions.bin
-            .pio/build/slave/firmware.bin
-            .pio/build/slave/bootloader.bin
-            .pio/build/slave/partitions.bin
+        run: |
+          gh release upload "${{ github.ref_name }}" \
+            .pio/build/master/firmware.bin \
+            .pio/build/master/bootloader.bin \
+            .pio/build/master/partitions.bin \
+            .pio/build/slave/firmware.bin \
+            .pio/build/slave/bootloader.bin \
+            .pio/build/slave/partitions.bin \
+            --clobber
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
