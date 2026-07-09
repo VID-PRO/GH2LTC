@@ -860,7 +860,7 @@ html,body{
   <div class="panel-close" onclick="toggleSettings()">&#10005;</div>
   <div class="settings-title">Generator Settings</div>
 
-  <div class="setting-row">
+  <div class="setting-row"> 
     <span class="setting-label">Frame Rate</span>
     <div class="fps-group" id="fps-group">
       <button class="fps-btn" data-fps="0">Auto</button>

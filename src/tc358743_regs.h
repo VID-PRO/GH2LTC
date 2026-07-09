@@ -4,10 +4,14 @@
 // project needs are reproduced here.
 
 #define CHIPID                0x0000
+#define FIFOCTL               0x0006
+#define SYS_CTRL              0x01F4
+#define MASK_SYS_CTRL_FIFO_RST  0x01
+#define MASK_SYS_CTRL_HDMI_RST  0x02
 
 #define SYS_INT               0x8502
 #define SYS_INTM              0x8512
-#define SYS_STATUS            0x8520   // bit0 = TMDS clock detected, bit1 = HDMI mode (vs DVI)
+#define SYS_STATUS            0x8520   // bit0=DDC5V, bit1=TMDSclk, bit2=PLLlock, bit3=PHYsdt, bit4=HDMI, bit5=HDCP
 #define VI_STATUS1            0x8522
 #define VI_STATUS3            0x8528
 
@@ -28,9 +32,27 @@
 #define INIT_END              0x854A
 #define HDMI_DET              0x8552
 
+#define FH_MIN0               0x85AA
+#define FH_MIN1               0x85AB
+#define FH_MAX0               0x85AC
+#define FH_MAX1               0x85AD
+#define HV_RST                0x85AF
+
+#define LOCKDET_REF0          0x8630
+#define LOCKDET_REF1          0x8631
+#define LOCKDET_REF2          0x8632
+
+#define NCO_F0_MOD            0x8670
+
 #define EDID_MODE             0x85C7
+#define MASK_EDID_MODE_DISABLE  0x00
+#define MASK_EDID_MODE_DDC2B    0x01
+#define MASK_EDID_MODE_E_DDC    0x02
+#define EDID_SEG_NUM          0x85C8
+#define EDID_SEG              0x85C9
 #define EDID_LEN1             0x85CA
 #define EDID_LEN2             0x85CB
+#define EDID_RAM              0x8C00
 
 #define FORCE_MUTE            0x8600
 #define CSI_LANE_ENABLE       0x8601   // CSI lanes - unused by us but part of std init

@@ -17,26 +17,22 @@
 //   - This is a starting point verified against the register map, but has
 //     NOT been tested against real silicon by this generator. Budget time
 //     for bring-up/debugging against your specific breakout board.
+
+extern const uint8_t EDID_1080P30[256];
+
 class TC358743 {
 public:
     explicit TC358743(TwoWire &wire = Wire, uint8_t addr = 0x0F);
 
-    // Initializes I2C and brings the chip's HDMI receiver + packet capture
-    // path up. Returns true if the chip responds with a sane CHIPID.
     bool begin(int sda_pin, int scl_pin, int reset_pin = -1);
 
-    // True once the chip reports a stable TMDS clock (i.e. HDMI cable is
-    // connected and the source is outputting a signal).
     bool hasSignal();
-
-    // True if the current signal is HDMI (vs DVI) - HDMI is required for
-    // InfoFrames/packets to be present at all.
     bool isHdmiMode();
-
-    // Selects which packet type appears in the rotating PK_ACP_0HEAD buffer.
     void selectPacketType(uint8_t packetType);
 
-    // Raw register access (exposed for the reverse-engineering dump tool).
+    bool writeEdid(const uint8_t *data, size_t len);
+    bool writeEdidByteByByte(const uint8_t *data, size_t len);
+
     uint8_t  readReg8(uint16_t reg);
     uint16_t readReg16(uint16_t reg);
     void     writeReg8(uint16_t reg, uint8_t val);

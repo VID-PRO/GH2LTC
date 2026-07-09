@@ -128,12 +128,163 @@ void dumpBuffer(const char *label, uint16_t reg, size_t len) {
     Serial.println();
 }
 
+void testEdidWrite() {
+    const uint16_t TEST_REG = 0x8C00;
+    Serial.println(F("--- EDID RAM test (read-only) ---"));
+    Serial.print(F("EDID header: "));
+    for (int i = 0; i < 8; i++) {
+        Serial.print(tc.readReg8(TEST_REG + i), HEX); Serial.print(' ');
+    }
+    Serial.println();
+}
+
+void dumpEdid() {
+    static const size_t EDID_SIZE = 256;
+    uint8_t buf[EDID_SIZE];
+    Serial.println(F("--- EDID readback (byte-by-byte) ---"));
+    for (size_t i = 0; i < EDID_SIZE; i++) {
+        buf[i] = tc.readReg8(EDID_RAM + i);
+    }
+    for (size_t i = 0; i < EDID_SIZE; i += 16) {
+        char line[80];
+        int pos = snprintf(line, sizeof(line), "%04X: ", (unsigned)i);
+        for (size_t j = 0; j < 16; j++) {
+            pos += snprintf(line + pos, sizeof(line) - pos, "%02X ", buf[i + j]);
+        }
+        Serial.println(line);
+    }
+    uint8_t sum0 = 0;
+    for (int i = 0; i < 128; i++) sum0 += buf[i];
+    Serial.print(F("Block 0 checksum: 0x")); Serial.print(sum0, HEX);
+    Serial.println(sum0 == 0 ? F(" (OK)") : F(" (BAD!)"));
+    uint8_t sum1 = 0;
+    for (int i = 128; i < 256; i++) sum1 += buf[i];
+    Serial.print(F("Block 1 checksum: 0x")); Serial.print(sum1, HEX);
+    Serial.println(sum1 == 0 ? F(" (OK)") : F(" (BAD!)"));
+    Serial.println();
+}
+
 void runReverseEngineerDump() {
-    Serial.println(F("--- InfoFrame / packet dump ---"));
+    uint8_t st = tc.readReg8(SYS_STATUS);
+    uint8_t hpd = tc.readReg8(HPD_CTL);
+    uint8_t ddc = tc.readReg8(DDC_CTL);
+
+    // If TMDS stayed 0 for ~5s, re-write EDID + retry HPD
+    static unsigned long lastHpdRetry = 0;
+    unsigned long now = millis();
+    if (!(st & 0x02) && (now - lastHpdRetry > 5000)) {
+        lastHpdRetry = now;
+        Serial.println(F("TMDS still 0 — re-writing EDID + retrying HPD..."));
+        tc.writeReg8(HPD_CTL, 0x00);   // HPD low
+        tc.writeReg8(EDID_MODE, 0x00); // disable EDID
+        delay(50);
+        // Re-write EDID
+        tc.writeEdidByteByByte(EDID_1080P30, sizeof(EDID_1080P30));
+        delay(10);
+        // EDID reshow (Linux driver sequence)
+        tc.writeReg8(EDID_LEN1, 0x00);
+        tc.writeReg8(EDID_LEN2, 0x00);
+        tc.writeReg8(EDID_SEG_NUM, 0x00);
+        tc.writeReg8(EDID_LEN1, sizeof(EDID_1080P30) & 0xFF);
+        tc.writeReg8(EDID_LEN2, (sizeof(EDID_1080P30) >> 8) & 0xFF);
+        // Re-enable EDID (E-DDC only, matching Linux driver)
+        tc.writeReg8(EDID_MODE, MASK_EDID_MODE_E_DDC);
+        delay(5);
+        // DDC debounce — 100ms (Linux driver default)
+        tc.writeReg8(DDC_CTL, 0x02);
+        // Assert HPD
+        tc.writeReg8(HPD_CTL, 0x01);
+        tc.writeReg16(SYS_INT, 0xFFFF);  // clear pending events
+        // Poll SYS_STATUS + DDC address rapidly for 2 seconds
+        for (int i = 0; i < 40; i++) {
+            delay(50);
+            uint8_t s = tc.readReg8(SYS_STATUS);
+            uint16_t si = tc.readReg16(SYS_INT);
+            uint8_t seg = tc.readReg8(EDID_SEG_NUM);
+            if (si) {
+                Serial.print(F("SYS_INT=0x"));
+                Serial.print(si, HEX);
+                Serial.print(F(" at +"));
+                Serial.print((i + 1) * 50);
+                Serial.println(F("ms"));
+                tc.writeReg16(SYS_INT, 0xFFFF);
+            }
+            if (s & 0x02) {
+                Serial.print(F("TMDS DETECTED at +"));
+                Serial.print((i + 1) * 50);
+                Serial.println(F("ms after HPD"));
+                break;
+            }
+            if (seg != 0xA0 && seg != 0) {
+                Serial.print(F("DDC addr 0x"));
+                Serial.print(seg, HEX);
+                Serial.print(F(" at +"));
+                Serial.print((i + 1) * 50);
+                Serial.println(F("ms"));
+            }
+        }
+        delay(10);
+        tc.writeReg8(SYS_CTRL, 0x00);
+        delay(10);
+        tc.writeReg8(SYS_CTRL, MASK_SYS_CTRL_HDMI_RST);
+        delay(10);
+        tc.writeReg8(SYS_CTRL, 0x00);
+        st = tc.readReg8(SYS_STATUS);
+        Serial.print(F("After retry SYS_STATUS: 0x"));
+        Serial.println(st, HEX);
+    }
+
+    Serial.println(F("--- status / packet dump ---"));
+    Serial.print(F("SYS_STATUS: 0x")); Serial.print(st, HEX);
+    Serial.print(F(" DDC5V=")); Serial.print((st >> 0) & 1);
+    Serial.print(F(" TMDS="));  Serial.print((st >> 1) & 1);
+    Serial.print(F(" PLL="));   Serial.print((st >> 2) & 1);
+    Serial.print(F(" SCDT="));  Serial.print((st >> 3) & 1);
+    Serial.print(F(" HDMI="));  Serial.print((st >> 4) & 1);
+    Serial.print(F(" HDCP="));  Serial.print((st >> 5) & 1);
+    Serial.print(F(" MUTE="));  Serial.print((st >> 6) & 1);
+    Serial.print(F(" SYNC="));  Serial.println((st >> 7) & 1);
+    uint8_t vi3 = tc.readReg8(VI_STATUS3);
+    uint8_t phyCsq = tc.readReg8(PHY_CSQ);
+    uint16_t sysInt = tc.readReg16(SYS_INT);
+    uint8_t edidSeg = tc.readReg8(EDID_SEG);
+    uint8_t edidLen1 = tc.readReg8(EDID_LEN1);
+    uint8_t edidLen2 = tc.readReg8(EDID_LEN2);
+    uint8_t sf0 = tc.readReg8(SYS_FREQ0);
+    uint8_t sf1 = tc.readReg8(SYS_FREQ1);
+    uint8_t nco = tc.readReg8(NCO_F0_MOD);
+    Serial.print(F("HPD_CTL: 0x")); Serial.print(hpd, HEX);
+    Serial.print(F(" DDC_CTL: 0x")); Serial.print(ddc, HEX);
+    Serial.print(F(" PHY_CSQ: 0x")); Serial.print(phyCsq, HEX);
+    Serial.print(F(" VI_STAT3: 0x")); Serial.print(vi3, HEX);
+    Serial.print(F(" SYS_INT: 0x")); Serial.print(sysInt, HEX);
+    Serial.print(F(" SF:0x")); Serial.print(sf1, HEX); Serial.print(sf0, HEX);
+    Serial.print(F(" NCO:0x")); Serial.print(nco, HEX);
+    uint8_t edidSegNum = tc.readReg8(EDID_SEG_NUM);
+    Serial.print(F(" EDID_SEG: 0x")); Serial.print(edidSeg, HEX);
+    Serial.print(F(" EDID_SEG_NUM: 0x")); Serial.print(edidSegNum, HEX);
+    Serial.print(F(" EDID_LEN: 0x")); Serial.print(edidLen2, HEX); Serial.print(edidLen1, HEX);
+    Serial.println();
+    // Verify EDID_RAM was written — read first 16 bytes (should be EDID header)
+    uint8_t edidHdr[16];
+    for (int i = 0; i < 16; i++) edidHdr[i] = tc.readReg8(EDID_RAM + i);
+    Serial.print(F("EDID_RAM[0..15]: "));
+    for (int i = 0; i < 16; i++) { if (edidHdr[i] < 0x10) Serial.print('0'); Serial.print(edidHdr[i], HEX); Serial.print(' '); }
+    Serial.println();
     Serial.print(F("Signal locked: "));
     Serial.println(tc.hasSignal() ? F("yes") : F("no"));
     Serial.print(F("HDMI mode: "));
     Serial.println(tc.isHdmiMode() ? F("yes (good, packets active)") : F("no (DVI - no packets!)"));
+
+    dumpEdid();
+    // Verify CEA block was written — dump first 20 bytes of block 1
+    Serial.print(F("CEA_BLK1[0..19]: "));
+    for (int i = 0; i < 20; i++) {
+        uint8_t b = tc.readReg8(EDID_RAM + 128 + i);
+        if (b < 0x10) Serial.print('0');
+        Serial.print(b, HEX); Serial.print(' ');
+    }
+    Serial.println();
 
     dumpBuffer("AVI InfoFrame       ", PK_AVI_0HEAD, PK_AVI_LEN);
     dumpBuffer("Vendor-Specific IF  ", PK_VS_0HEAD,  PK_VS_LEN);
@@ -258,8 +409,26 @@ static void masterSetup() {
     Serial.println(F("LTC timer SKIPPED (debug)"));
 #endif
 
-    // I2C device detection
+    // TC358743 via bit-bang probe (no Wire init needed — avoids I2C peripheral
+    // interfering with manual pin toggling)
     tcPresent = tc.begin(TC_I2C_SDA_PIN, TC_I2C_SCL_PIN, TC_RESET_PIN);
+    if (!tcPresent) {
+        Wire.begin(TC_I2C_SDA_PIN, TC_I2C_SCL_PIN, 100000);
+    }
+
+    // I2C bus scan — hardware I2C (Wire must be initialised first)
+    Serial.print(F("I2C scan: "));
+    int nFound = 0;
+    for (uint8_t addr = 1; addr < 127; addr++) {
+        Wire.beginTransmission(addr);
+        if (Wire.endTransmission() == 0) {
+            if (nFound) Serial.print(F(", "));
+            Serial.printf("0x%02X", addr);
+            nFound++;
+        }
+    }
+    if (nFound == 0) Serial.print(F("(none)"));
+    Serial.println();
     if (!tcPresent) {
         Serial.println(F("ERROR: TC358743 not responding — HDMI functions disabled."));
     } else {
@@ -470,10 +639,24 @@ static void masterLoop() {
 static void slaveSetup() {
     Wire.begin(TC_I2C_SDA_PIN, TC_I2C_SCL_PIN);
 
-    // LTC encoder
     ltc.begin();
     ltc.setTime(0, 0, 0, 0);
     Serial.println(F("LTC encoder started"));
+
+#if RTC_ENABLE
+    rtcPresent = rtc.begin(RTC_I2C_SDA_PIN, RTC_I2C_SCL_PIN);
+    if (rtcPresent) {
+        Serial.println(F("DS3231 RTC detected."));
+        if (rtc.readTime(rtcHH, rtcMM, rtcSS)) {
+            ltc.setTime(rtcHH, rtcMM, rtcSS, 0);
+            lastRtcReadMs = lastRtcSyncMs = millis();
+            Serial.print(F("RTC initial time: "));
+            Serial.printf("%02u:%02u:%02u\n", rtcHH, rtcMM, rtcSS);
+        }
+    } else {
+        Serial.println(F("No RTC detected."));
+    }
+#endif
 
 #if OLED_ENABLE
     oled.begin();
@@ -497,7 +680,31 @@ static void slaveLoop() {
     bleTimecodePoll();
 
     uint16_t frames = ltc.framesCompleted();
-    while (frames--) ltc.tick();
+    if (frames > 0) {
+        if (!bleTimecodeConnected()) {
+#if RTC_ENABLE
+            if (rtcPresent) {
+                unsigned long now = millis();
+                if (now - lastRtcReadMs >= 1000) {
+                    lastRtcReadMs = now;
+                    if (rtc.readTime(rtcHH, rtcMM, rtcSS)) {
+                        lastRtcSyncMs = now;
+                    }
+                }
+                unsigned long elapsed = now - lastRtcSyncMs;
+                uint8_t ff = (elapsed * ltc.fps()) / 1000;
+                if (ff >= ltc.fps()) ff = ltc.fps() - 1;
+                ltc.setTime(rtcHH, rtcMM, rtcSS, ff);
+            } else {
+                while (frames--) ltc.tick();
+            }
+#else
+            while (frames--) ltc.tick();
+#endif
+        } else {
+            while (frames--) ltc.tick();
+        }
+    }
 
 #if OLED_ENABLE
     fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());

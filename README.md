@@ -65,7 +65,7 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 
 | Signal | GPIO |
 |--------|------|
-| STATUS_LED | 8 |
+| STATUS_LED | 7 |
 
 ---
 
@@ -134,8 +134,8 @@ On macOS/Linux the USB serial (CDC) should appear automatically. On Windows you 
 | | Master | Slave |
 |---|---|---|
 | HDMI (TC358743) | ✓ | — |
-| RTC (DS3231) | ✓ | — |
-| OLED (SSD1306) | ✓ | — |
+| RTC (DS3231) | ✓ | ✓ |
+| OLED (SSD1306) | ✓ | ✓ |
 | MAX7219 matrix | ✓ | ✓ |
 | Web UI | ✓ | ✓ |
 | BLE | Server (advertise, notify) | Client (scan, connect, subscribe) |
@@ -200,14 +200,14 @@ Open `http://192.168.4.1` (AP mode) or the ESP's STA IP. The header displays a c
 | WiFi AP security | Open | Open |
 | FPS | Auto (re-detect) | 25 |
 | Drop frame | Off | Off |
-| RTC | Optional (DS3231) | — |
-| OLED | Optional (SSD1306) | — |
+| RTC | Optional (DS3231) | Optional (DS3231) |
+| OLED | Optional (SSD1306) | Optional (SSD1306) |
 | MAX7219 matrix | Enabled by default | Enabled by default |
 | Matrix brightness | 4 (0–15) | 4 |
 | Matrix enabled | true (runtime) | true (runtime) |
 | LTC output pin | GPIO6 | GPIO6 |
 | Status LED | GPIO7 | GPIO7 |
-| Reverse-engineer mode | 1 (change to 0 after GH5 mapping) | 0 |
+| Reverse-engineer mode | 0 (set to 1 during GH5 byte mapping) | 0 |
 | BLE role | Master (advertise + notify) | Slave (scan + subscribe) |
 
 ---
@@ -235,7 +235,9 @@ To switch modes:
 
 ## Step 1: Reverse-engineer GH5 timecode bytes
 
-`config.h` has `REVERSE_ENGINEER_MODE 1` by default. Connect the GH5 via HDMI, open serial monitor, set the GH5's timecode to a known value, then diff the InfoFrame dumps as time advances to find which bytes change. Fill in `decodeGh5Timecode()` in `src/panasonic_tc.h`, then set `REVERSE_ENGINEER_MODE 0`.
+Set `REVERSE_ENGINEER_MODE 1` in `src/config.h`. Connect the GH5 via HDMI, open serial monitor, set the GH5's timecode to a known value, then diff the InfoFrame dumps as time advances to find which bytes change. Fill in `decodeGh5Timecode()` in `src/panasonic_tc.h`, then set `REVERSE_ENGINEER_MODE 0`.
+
+When no HDMI source is detected (`TMDS=0`) the system free-runs, generating LTC from its internal timer starting at 01:00:00:00 (or RTC if fitted). It auto-switches between HDMI and free-run as sources are connected/disconnected.
 
 ---
 
@@ -250,6 +252,12 @@ To switch modes:
 ## ⚠️ GH5 4K HDMI vs TC358743
 
 The TC358743 only supports HDMI 1.4 up to 1080p. Set the GH5's "HDMI Rec Output" to FHD in the camera menu — this project only reads InfoFrame metadata, not pixel data.
+
+## Troubleshooting TC358743
+
+**CHIPID reads 0x0000** — the chip responds to I2C but doesn't identify as a genuine TC358743 (expected 0x44XX). Many breakout boards sold on AliExpress/Amazon are counterfeits or damaged. If you also see DDC5V toggling between 0→1 every 50ms and TMDS never goes high, the board is defective. No software change can fix this — replace the board.
+
+**Test with a known-good HDMI source** (laptop, PC) before blaming the GH5. If both produce `TMDS=0`, the TC358743 breakout board is the problem, not the camera.
 
 ---
 
