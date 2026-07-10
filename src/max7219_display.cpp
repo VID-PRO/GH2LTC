@@ -1,4 +1,5 @@
 #include "max7219_display.h"
+#include <SPI.h>
 
 // 5x7 font — bit 0 = top row, bit 6 = bottom row.
 // Indices 0-9 = '0'-'9', 10 = ':', 11='V', 12='I', 13='D', 14='-', 15='P', 16='R', 17='O',
@@ -31,14 +32,15 @@ const uint8_t Max7219Display::_font[25][5] = {
     {0x3E, 0x41, 0x41, 0x41, 0x22}, // C
 };
 
-// Constructor: software SPI (moduleType, dataPin, clkPin, csPin, numDevices)
-Max7219Display::Max7219Display(uint8_t dinPin, uint8_t csPin, uint8_t clkPin, uint8_t numModules)
-    : _mx(MD_MAX72XX::FC16_HW, dinPin, clkPin, csPin, numModules)
+// Constructor: hardware SPI (csPin, numModules)
+Max7219Display::Max7219Display(uint8_t csPin, uint8_t numModules)
+    : _mx(MD_MAX72XX::FC16_HW, csPin, numModules)
 {
     _lastTc[0] = '\0';
 }
 
 void Max7219Display::begin() {
+    SPI.begin(MAX7219_CLK_PIN, -1, MAX7219_DIN_PIN, -1);
     _mx.begin();
     _mx.control(MD_MAX72XX::INTENSITY, 4);
     _mx.clear();

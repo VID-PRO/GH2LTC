@@ -4,7 +4,7 @@
 
 class Max7219Display {
 public:
-    Max7219Display(uint8_t dinPin, uint8_t csPin, uint8_t clkPin, uint8_t numModules);
+    Max7219Display(uint8_t csPin, uint8_t numModules);
 
     void begin();
     void setIntensity(uint8_t val);

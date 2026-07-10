@@ -52,7 +52,7 @@ static uint8_t rtcHH = 0, rtcMM = 0, rtcSS = 0;
 static WebUI webui;
 #endif
 #if MAX7219_ENABLE
-static Max7219Display mx7219(MAX7219_DIN_PIN, MAX7219_CS_PIN, MAX7219_CLK_PIN, MAX7219_NUM_MODULES);
+static Max7219Display mx7219(MAX7219_CS_PIN, MAX7219_NUM_MODULES);
 #endif
 
 static bool tcPresent = false;
@@ -611,7 +611,15 @@ static void masterLoop() {
                 ltc.setTime(rtcHH, rtcMM, rtcSS, ff);
                 strcpy(tcSource, "RTC");
             } else {
-                while (frames--) ltc.tick();
+            while (frames--) {
+                ltc.tick();
+#if MAX7219_ENABLE
+#if WEBUI_ENABLE
+                if (webui.matrixEnabled())
+#endif
+                    mx7219.showTimecode(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
+#endif
+            }
                 strcpy(tcSource, "FREE");
             }
 #else
