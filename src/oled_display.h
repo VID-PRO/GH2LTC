@@ -1,8 +1,10 @@
 #pragma once
 #include <Arduino.h>
+#include "config.h"
+
+#if OLED_ENABLE
 #include <Wire.h>
 #include <U8g2lib.h>
-#include "config.h"
 
 class OledDisplay {
 public:
@@ -20,3 +22,4 @@ private:
     char _lastTc[13];
     uint8_t _lastFps;
 };
+#endif

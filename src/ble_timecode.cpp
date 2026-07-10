@@ -281,7 +281,7 @@ void bleSetMode(int mode) {}
 
 void bleTimecodeInit() {
     blePrefs.begin(NVS_NS, true);
-    String saved = blePrefs.getString("master", "");
+    String saved = blePrefs.isKey("master") ? blePrefs.getString("master", "") : "";
     String savedName = blePrefs.getString("slave_name", "TC-LTC-SLAVE");
     blePrefs.end();
     strncpy(slaveBleName, savedName.c_str(), sizeof(slaveBleName) - 1);

@@ -1,5 +1,4 @@
 #include "ltc_encoder.h"
-#include <esp_timer.h>
 
 LtcEncoder *LtcEncoder::_instance = nullptr;
 
@@ -25,17 +24,27 @@ void LtcEncoder::startTimer() {
     double halfBitPeriodUs = 1000000.0 / (80.0 * _fps * 2.0);
     _halfBitPeriodUs = (uint64_t)(halfBitPeriodUs + 0.5);
 
-    esp_timer_create_args_t args = {};
-    args.callback = &isrTrampoline;
-    args.name = "ltc_timer";
-    esp_timer_create(&args, (esp_timer_handle_t *)&_timer);
-    esp_timer_start_periodic((esp_timer_handle_t)_timer, _halfBitPeriodUs);
+    _timer = timerBegin(1000000);
+    if (!_timer) {
+        Serial.println(F("[LTC] FATAL: timerBegin failed"));
+        return;
+    }
+    timerStop(_timer);
+    timerWrite(_timer, 0);
+    timerAttachInterrupt(_timer, &isrTrampoline);
+    timerStop(_timer);
+    timerWrite(_timer, 0);
+    timerAlarm(_timer, _halfBitPeriodUs, true, 0);
+    timerStart(_timer);
+
+    Serial.printf("[LTC] %u fps  halfBit=%llu us  timerFreq=%u Hz\n",
+                  _fps, _halfBitPeriodUs, timerGetFrequency(_timer));
 }
 
 void LtcEncoder::stopTimer() {
     if (_timer) {
-        esp_timer_stop((esp_timer_handle_t)_timer);
-        esp_timer_delete((esp_timer_handle_t)_timer);
+        timerStop(_timer);
+        timerEnd(_timer);
         _timer = nullptr;
     }
 }
@@ -54,8 +63,10 @@ void LtcEncoder::setFps(uint8_t fps, bool dropFrame) {
     double halfBitPeriodUs = 1000000.0 / (80.0 * _fps * 2.0);
     _halfBitPeriodUs = (uint64_t)(halfBitPeriodUs + 0.5);
     if (_timer) {
-        esp_timer_stop((esp_timer_handle_t)_timer);
-        esp_timer_start_periodic((esp_timer_handle_t)_timer, _halfBitPeriodUs);
+        timerStop(_timer);
+        timerWrite(_timer, 0);
+        timerAlarm(_timer, _halfBitPeriodUs, true, 0);
+        timerStart(_timer);
     }
 }
 
@@ -157,7 +168,7 @@ void IRAM_ATTR LtcEncoder::onHalfBitTick() {
     }
 }
 
-void IRAM_ATTR LtcEncoder::isrTrampoline(void *) {
+void IRAM_ATTR LtcEncoder::isrTrampoline() {
     if (_instance) _instance->onHalfBitTick();
 }
 

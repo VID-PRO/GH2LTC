@@ -17,5 +17,5 @@ private:
     char _lastTc[11];
 
     void _drawChar(uint8_t *buf, uint8_t col, char c);
-    static const uint8_t _font[24][5];
+    static const uint8_t _font[25][5];
 };

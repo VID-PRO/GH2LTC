@@ -343,15 +343,19 @@ static void printResetReason() {
 static void printConfig() {
     Serial.println(F("── CONFIG ──────────────────────────────"));
     Serial.print(F("  MODE              "));
-#if BLE_MASTER
+#if BLE_CLAP
+    Serial.println(F("CLAP"));
+#elif BLE_MASTER
     Serial.println(F("MASTER"));
 #else
     Serial.println(F("SLAVE"));
 #endif
+#ifndef BLE_CLAP
     Serial.print(F("  LTC_ENABLED       ")); Serial.println(webui.ltcEnabled() ? "1" : "0");
     Serial.print(F("  LTC_OUT_PIN       ")); Serial.println(LTC_OUT_PIN);
     Serial.print(F("  LTC_FPS           ")); Serial.println(LTC_FPS);
     Serial.print(F("  LTC_DROP_FRAME    ")); Serial.println(LTC_DROP_FRAME);
+#endif
     Serial.print(F("  FPS_AUTO_DETECT   ")); Serial.println(FPS_AUTO_DETECT);
     Serial.print(F("  REVERSE_ENGINEER  ")); Serial.println(REVERSE_ENGINEER_MODE);
 #if BLE_MASTER
@@ -360,8 +364,10 @@ static void printConfig() {
     Serial.print(F(" ADDR=0x")); Serial.println(TC_I2C_ADDR, HEX);
     Serial.print(F("  TC_RESET_PIN      ")); Serial.println(TC_RESET_PIN);
 #endif
+#ifndef BLE_CLAP
     Serial.print(F("  OLED_ENABLED      ")); Serial.println(webui.oledEnabled() ? "1" : "0");
     if (OLED_ENABLE) { Serial.print(F("  OLED_I2C_ADDR    0x")); Serial.println(OLED_I2C_ADDR, HEX); }
+#endif
     Serial.print(F("  RTC_ENABLE        ")); Serial.println(RTC_ENABLE);
     if (RTC_ENABLE) {
         Serial.print(F("  RTC I2C           SDA=")); Serial.print(RTC_I2C_SDA_PIN);
@@ -646,12 +652,16 @@ static void masterLoop() {
 // ===========================================================================
 #if BLE_SLAVE
 static void slaveSetup() {
+#if OLED_ENABLE || RTC_ENABLE
     Wire.begin(TC_I2C_SDA_PIN, TC_I2C_SCL_PIN);
+#endif
 
     ltc.begin();
     ltc.setTime(0, 0, 0, 0);
+#ifndef BLE_CLAP
     Serial.print(F("LTC encoder "));
     Serial.println(webui.ltcEnabled() ? F("started") : F("disabled"));
+#endif
 
 #if RTC_ENABLE
     rtcPresent = rtc.begin(RTC_I2C_SDA_PIN, RTC_I2C_SCL_PIN);
@@ -680,7 +690,11 @@ static void slaveSetup() {
 #if MAX7219_ENABLE
     mx7219.begin();
     if (webui.matrixEnabled()) {
+#if BLE_CLAP
+        mx7219.showText("CLAP");
+#else
         mx7219.showText("SLAVE");
+#endif
         delay(2000);
     }
     Serial.println(F("MAX7219 started"));
@@ -697,27 +711,22 @@ static void slaveLoop() {
 
     uint16_t frames = ltc.framesCompleted();
     if (frames > 0) {
-        if (!bleTimecodeConnected()) {
 #if RTC_ENABLE
-            if (rtcPresent) {
-                unsigned long now = millis();
-                if (now - lastRtcReadMs >= 1000) {
-                    lastRtcReadMs = now;
-                    if (rtc.readTime(rtcHH, rtcMM, rtcSS)) {
-                        lastRtcSyncMs = now;
-                    }
+        if (!bleTimecodeConnected() && rtcPresent) {
+            unsigned long now = millis();
+            if (now - lastRtcReadMs >= 1000) {
+                lastRtcReadMs = now;
+                if (rtc.readTime(rtcHH, rtcMM, rtcSS)) {
+                    lastRtcSyncMs = now;
                 }
-                unsigned long elapsed = now - lastRtcSyncMs;
-                uint8_t ff = (elapsed * ltc.fps()) / 1000;
-                if (ff >= ltc.fps()) ff = ltc.fps() - 1;
-                ltc.setTime(rtcHH, rtcMM, rtcSS, ff);
-            } else {
-                while (frames--) ltc.tick();
             }
-#else
-            while (frames--) ltc.tick();
+            unsigned long elapsed = now - lastRtcSyncMs;
+            uint8_t ff = (elapsed * ltc.fps()) / 1000;
+            if (ff >= ltc.fps()) ff = ltc.fps() - 1;
+            ltc.setTime(rtcHH, rtcMM, rtcSS, ff);
+        } else
 #endif
-        } else {
+        {
             while (frames--) ltc.tick();
         }
     }
@@ -756,7 +765,9 @@ void setup() {
     printResetReason();
 
     Serial.print(F("GH5 HDMI -> LTC box starting in "));
-#if BLE_MASTER
+#if BLE_CLAP
+    Serial.println(F("CLAP mode..."));
+#elif BLE_MASTER
     Serial.println(F("MASTER mode..."));
 #else
     Serial.println(F("SLAVE mode..."));
@@ -765,8 +776,8 @@ void setup() {
 
     // Start WiFi AP + web server BEFORE LTC timer
 #if WEBUI_ENABLE
-    // Build AP SSID from BLE name: if default → "GH2LTC_" + last 4 MAC digits (master)
-    // or "TC-SLAVE-XXXX" (slave), else use BLE name
+    // Build AP SSID from BLE name: "GH2LTC_XXXX" (master), "TC-SLAVE-XXXX" (slave),
+    // "TC-CLAP-XXXX" (clap), or custom name if saved
     static char apSsid[33];
     {
         Preferences blePrefs;
@@ -776,7 +787,13 @@ void setup() {
         char macSuffix[8];
         snprintf(macSuffix, sizeof(macSuffix), "%02X%02X", mac[4], mac[5]);
 
-#if BLE_MASTER
+#if BLE_CLAP
+        char defaultClapName[33];
+        snprintf(defaultClapName, sizeof(defaultClapName), "TC-CLAP-%s", macSuffix);
+        String bleName = blePrefs.getString("slave_name", defaultClapName);
+        strncpy(apSsid, bleName.c_str(), sizeof(apSsid) - 1);
+        apSsid[sizeof(apSsid) - 1] = '\0';
+#elif BLE_MASTER
         String bleName = blePrefs.getString("name", "TC-LTC-MASTER");
         if (bleName == "TC-LTC-MASTER") {
             snprintf(apSsid, sizeof(apSsid), "GH2LTC_%s", macSuffix);

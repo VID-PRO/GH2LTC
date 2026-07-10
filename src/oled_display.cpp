@@ -1,15 +1,12 @@
 #include "oled_display.h"
 
+#if OLED_ENABLE
 OledDisplay::OledDisplay()
     : _u8g2(U8G2_R0, U8X8_PIN_NONE, TC_I2C_SCL_PIN, TC_I2C_SDA_PIN), _present(false), _lastFps(0) {
     _lastTc[0] = '\0';
 }
 
 bool OledDisplay::begin() {
-    // Probe I2C first — U8g2's init sends ~30 commands, and on ESP32-C3
-    // the I2C timeout is set to I2C_LL_MAX_TIMEOUT (≈10 s per NACKed
-    // transaction).  Without this probe, a missing/powered-off OLED would
-    // block setup() for minutes and starve the WiFi stack.
     Wire.beginTransmission(OLED_I2C_ADDR);
     if (Wire.endTransmission() != 0) {
         _present = false;
@@ -61,3 +58,4 @@ void OledDisplay::update(const char *timecode, uint8_t fps, bool locked) {
         _u8g2.drawStr((128 - w) / 2, 63, "(c) by VID-PRO");
     } while (_u8g2.nextPage());
 }
+#endif

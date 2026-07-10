@@ -5,7 +5,7 @@
 //
 // LTC is an 80-bit frame, biphase-mark coded, transmitted as audio at
 // (80 * fps) bits/sec. We precompute the 80 data bits for "now" whenever the
-// caller calls setTime(), and an esp_timer ISR continuously walks the
+// caller calls setTime(), and an Arduino hw_timer ISR continuously walks the
 // biphase-mark state machine to toggle the output GPIO — this runs
 // completely independently of the main loop / I2C polling, so LTC output
 // stays smooth even while we're busy reading the HDMI receiver.
@@ -57,13 +57,13 @@ private:
 
     uint8_t _hh = 0, _mm = 0, _ss = 0, _ff = 0, _dd = 0;
 
-    void * _timer;   // esp_timer_handle_t, stored as void* to avoid esp header here
+    hw_timer_t * _timer = nullptr;
 
     void encodeFrame();
     void IRAM_ATTR onHalfBitTick();
     void startTimer();
     void stopTimer();
 
-    static void IRAM_ATTR isrTrampoline(void *);
+    static void IRAM_ATTR isrTrampoline();
     static LtcEncoder *_instance;
 };

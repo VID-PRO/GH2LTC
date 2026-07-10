@@ -968,6 +968,9 @@ html,body{
     </label>
   </div>
 
+)rawliteral");
+#ifndef BLE_CLAP
+    html += F(R"rawliteral(
   <div class="setting-row">
     <span class="setting-label">OLED</span>
     <label class="toggle-track">
@@ -985,7 +988,9 @@ html,body{
       <span class="toggle-label" id="ltc-label">On</span>
     </label>
   </div>
-
+)rawliteral");
+#endif
+    html += F(R"rawliteral(
   <div class="setting-row">
     <span class="setting-label">Jam Time</span>
     <div class="jam-row">
@@ -1081,11 +1086,16 @@ html,body{
   var dfLbl=document.getElementById('df-label');
   var matrixToggle=document.getElementById('matrix-toggle');
   var matrixLabel=document.getElementById('matrix-label');
+)rawliteral"));
+#ifndef BLE_CLAP
+    html += String(F(R"rawliteral(
   var oledToggle=document.getElementById('oled-toggle');
   var oledLabel=document.getElementById('oled-label');
   var ltcToggle=document.getElementById('ltc-toggle');
   var ltcLabel=document.getElementById('ltc-label');
-
+)rawliteral"));
+#endif
+    html += String(F(R"rawliteral(
   // WiFi DOM refs
   var wifiSsidEl=document.getElementById('wifi-ssid');
   var wifiIpEl=document.getElementById('wifi-ip');
@@ -1117,11 +1127,11 @@ html,body{
           matrixToggle.checked=d.matrix;
           matrixLabel.textContent=d.matrix?'On':'Off';
         }
-        if(oledToggle.checked!==d.oled){
+        if(oledToggle && oledToggle.checked!==d.oled){
           oledToggle.checked=d.oled;
           oledLabel.textContent=d.oled?'On':'Off';
         }
-        if(ltcToggle.checked!==d.ltc){
+        if(ltcToggle && ltcToggle.checked!==d.ltc){
           ltcToggle.checked=d.ltc;
           ltcLabel.textContent=d.ltc?'On':'Off';
         }
@@ -1198,7 +1208,7 @@ html,body{
   });
 
   // ── OLED toggle ──
-  oledToggle.addEventListener('change',function(){
+  if(oledToggle) oledToggle.addEventListener('change',function(){
     var en=this.checked?1:0;
     oledLabel.textContent=this.checked?'On':'Off';
     var x=new XMLHttpRequest();
@@ -1208,7 +1218,7 @@ html,body{
   });
 
   // ── LTC Out toggle ──
-  ltcToggle.addEventListener('change',function(){
+  if(ltcToggle) ltcToggle.addEventListener('change',function(){
     var en=this.checked?1:0;
     ltcLabel.textContent=this.checked?'On':'Off';
     var x=new XMLHttpRequest();
