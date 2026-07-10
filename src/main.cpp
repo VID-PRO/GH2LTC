@@ -617,8 +617,10 @@ static void masterLoop() {
 #endif
 
 #if OLED_ENABLE
-        fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
-        oled.update(tcStr, ltc.fps(), hdmiOk);
+        if (webui.oledEnabled()) {
+            fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
+            oled.update(tcStr, ltc.fps(), hdmiOk);
+        }
 #endif
 #if MAX7219_ENABLE
         if (webui.matrixEnabled()) {
@@ -713,8 +715,10 @@ static void slaveLoop() {
     }
 
 #if OLED_ENABLE
-    fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
-    oled.update(tcStr, ltc.fps(), bleTimecodeConnected());
+    if (webui.oledEnabled()) {
+        fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
+        oled.update(tcStr, ltc.fps(), bleTimecodeConnected());
+    }
 #endif
 
 #if MAX7219_ENABLE
@@ -783,6 +787,16 @@ void setup() {
 #endif
         blePrefs.end();
     }
+    // Register persistent callbacks BEFORE begin() so NVS state applies at once
+#if OLED_ENABLE
+    webui.onSetOledEnabled([](bool en) {
+        oled.setEnabled(en);
+    });
+#endif
+    webui.onSetLtcEnabled([](bool en) {
+        ltc.setEnabled(en);
+    });
+
     Serial.print(F("Starting WiFi AP... "));
     Serial.println(apSsid);
     webui.begin(apSsid, WEBUI_AP_PASSWORD,

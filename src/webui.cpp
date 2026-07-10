@@ -53,6 +53,9 @@ void WebUI::begin(const char *apSsid, const char *apPassword,
     _server.on("/api/jam",   HTTP_POST, std::bind(&WebUI::handleApiJam,   this));
     _server.on("/api/brightness", HTTP_ANY, std::bind(&WebUI::handleApiBrightness, this));
     _server.on("/api/matrix",    HTTP_ANY, std::bind(&WebUI::handleApiMatrix,    this));
+    _server.on("/api/oled",      HTTP_ANY, std::bind(&WebUI::handleApiOled,      this));
+    _server.on("/api/ltc",       HTTP_ANY, std::bind(&WebUI::handleApiLtc,       this));
+    _server.on("/api/restart",   HTTP_POST, std::bind(&WebUI::handleApiRestart,   this));
     _server.on("/api/wifi",  HTTP_ANY,  std::bind(&WebUI::handleApiWifi,  this));
     _server.on("/api/ble",   HTTP_ANY,  std::bind(&WebUI::handleApiBle,   this));
     _server.on("/api/mode",  HTTP_ANY,  std::bind(&WebUI::handleApiMode,  this));
@@ -68,9 +71,13 @@ void WebUI::begin(const char *apSsid, const char *apPassword,
     _prefs.begin("webui", false);
     _brightness = _prefs.getUChar("brightness", 4);
     _matrixEnabled = _prefs.getBool("matrix_en", true);
+    _oledEnabled = _prefs.getBool("oled_en", true);
+    _ltcEnabled = _prefs.getBool("ltc_en", true);
     _prefs.end();
     if (_brightnessCb) _brightnessCb(_brightness);
     if (_matrixCb) _matrixCb(_matrixEnabled);
+    if (_oledCb) _oledCb(_oledEnabled);
+    if (_ltcCb) _ltcCb(_ltcEnabled);
 
     // Mark time so handleClient() can check STA progress non-blockingly
     _staConnectStart = millis();
@@ -165,13 +172,15 @@ void WebUI::handleApiTc() {
     snprintf(body, sizeof(body),
         "{\"tc\":\"%02u:%02u:%02u:%02u:%02u\","
         "\"fps\":%u,\"df\":%s,\"locked\":%s,\"source\":\"%s\","
-        "\"auto\":%s,\"matrix\":%s}",
+        "\"auto\":%s,\"matrix\":%s,\"oled\":%s,\"ltc\":%s}",
         _dd, _hh, _mm, _ss, _ff,
         _fps, _dropFrame ? "true" : "false",
         _hdmiLocked ? "true" : "false",
         _source,
         _autoFps ? "true" : "false",
-        _matrixEnabled ? "true" : "false");
+        _matrixEnabled ? "true" : "false",
+        _oledEnabled ? "true" : "false",
+        _ltcEnabled ? "true" : "false");
     _server.send(200, "application/json", body);
 }
 
@@ -258,6 +267,55 @@ void WebUI::handleApiMatrix() {
     char body[48];
     snprintf(body, sizeof(body), "{\"en\":%s}", _matrixEnabled ? "true" : "false");
     _server.send(200, "application/json", body);
+}
+
+// -----------------------------------------------------------------------
+// GET/POST /api/oled  — enable/disable OLED display
+// -----------------------------------------------------------------------
+void WebUI::handleApiOled() {
+    if (_server.method() == HTTP_POST) {
+        String enStr = _server.arg("en");
+        if (enStr.length()) {
+            _oledEnabled = (enStr.toInt() != 0);
+            _prefs.begin("webui", false);
+            _prefs.putBool("oled_en", _oledEnabled);
+            _prefs.end();
+            if (_oledCb) _oledCb(_oledEnabled);
+        }
+    }
+
+    char body[48];
+    snprintf(body, sizeof(body), "{\"en\":%s}", _oledEnabled ? "true" : "false");
+    _server.send(200, "application/json", body);
+}
+
+// -----------------------------------------------------------------------
+// GET/POST /api/ltc  — enable/disable LTC audio output
+// -----------------------------------------------------------------------
+void WebUI::handleApiLtc() {
+    if (_server.method() == HTTP_POST) {
+        String enStr = _server.arg("en");
+        if (enStr.length()) {
+            _ltcEnabled = (enStr.toInt() != 0);
+            _prefs.begin("webui", false);
+            _prefs.putBool("ltc_en", _ltcEnabled);
+            _prefs.end();
+            if (_ltcCb) _ltcCb(_ltcEnabled);
+        }
+    }
+
+    char body[48];
+    snprintf(body, sizeof(body), "{\"en\":%s}", _ltcEnabled ? "true" : "false");
+    _server.send(200, "application/json", body);
+}
+
+// -----------------------------------------------------------------------
+// POST /api/restart  — restart the ESP
+// -----------------------------------------------------------------------
+void WebUI::handleApiRestart() {
+    _server.send(200, "application/json", "{\"ok\":true}");
+    delay(100);
+    ESP.restart();
 }
 
 // -----------------------------------------------------------------------
@@ -750,6 +808,16 @@ html,body{
 .wifi-msg.ok{color:#00aa44}
 .wifi-msg.err{color:#aa4444}
 
+/* restart button */
+.restart-btn{
+  display:block;width:100%;margin-top:16px;
+  background:transparent;border:1px solid #441a1a;border-radius:4px;
+  color:#884444;padding:10px 14px;
+  font-family:inherit;font-size:clamp(11px,1.5vw,13px);
+  cursor:pointer;transition:.15s;text-transform:uppercase
+}
+.restart-btn:hover{background:#1a0a0a;border-color:#664444}
+
 /* brightness slider */
 .brightness-row{display:flex;align-items:center;gap:10px}
 .brightness-row input[type=range]{
@@ -901,6 +969,24 @@ html,body{
   </div>
 
   <div class="setting-row">
+    <span class="setting-label">OLED</span>
+    <label class="toggle-track">
+      <input type="checkbox" id="oled-toggle" checked>
+      <span class="toggle-switch"></span>
+      <span class="toggle-label" id="oled-label">On</span>
+    </label>
+  </div>
+
+  <div class="setting-row">
+    <span class="setting-label">LTC Out</span>
+    <label class="toggle-track">
+      <input type="checkbox" id="ltc-toggle" checked>
+      <span class="toggle-switch"></span>
+      <span class="toggle-label" id="ltc-label">On</span>
+    </label>
+  </div>
+
+  <div class="setting-row">
     <span class="setting-label">Jam Time</span>
     <div class="jam-row">
       <input type="number" min="0" max="99" id="jam-dd" value="0">
@@ -941,6 +1027,8 @@ html,body{
     AP <span>__AP_SSID__</span> &nbsp;|&nbsp; <span>__AP_IP__</span><br>
     STA <span>__STA_SSID__</span> &nbsp;|&nbsp; <span>__STA_IP__</span>
   </div>
+
+  <button class="restart-btn" onclick="restartEsp()">Restart Device</button>
 )rawliteral");
 #if BLE_MASTER
     html += F(R"rawliteral(
@@ -993,6 +1081,10 @@ html,body{
   var dfLbl=document.getElementById('df-label');
   var matrixToggle=document.getElementById('matrix-toggle');
   var matrixLabel=document.getElementById('matrix-label');
+  var oledToggle=document.getElementById('oled-toggle');
+  var oledLabel=document.getElementById('oled-label');
+  var ltcToggle=document.getElementById('ltc-toggle');
+  var ltcLabel=document.getElementById('ltc-label');
 
   // WiFi DOM refs
   var wifiSsidEl=document.getElementById('wifi-ssid');
@@ -1024,6 +1116,14 @@ html,body{
         if(matrixToggle.checked!==d.matrix){
           matrixToggle.checked=d.matrix;
           matrixLabel.textContent=d.matrix?'On':'Off';
+        }
+        if(oledToggle.checked!==d.oled){
+          oledToggle.checked=d.oled;
+          oledLabel.textContent=d.oled?'On':'Off';
+        }
+        if(ltcToggle.checked!==d.ltc){
+          ltcToggle.checked=d.ltc;
+          ltcLabel.textContent=d.ltc?'On':'Off';
         }
       }catch(e){}
     };
@@ -1096,6 +1196,34 @@ html,body{
     x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
     x.send('en='+en);
   });
+
+  // ── OLED toggle ──
+  oledToggle.addEventListener('change',function(){
+    var en=this.checked?1:0;
+    oledLabel.textContent=this.checked?'On':'Off';
+    var x=new XMLHttpRequest();
+    x.open('POST','/api/oled',true);
+    x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
+    x.send('en='+en);
+  });
+
+  // ── LTC Out toggle ──
+  ltcToggle.addEventListener('change',function(){
+    var en=this.checked?1:0;
+    ltcLabel.textContent=this.checked?'On':'Off';
+    var x=new XMLHttpRequest();
+    x.open('POST','/api/ltc',true);
+    x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
+    x.send('en='+en);
+  });
+
+  // ── Restart button ──
+  window.restartEsp=function(){
+    if(!confirm('Restart device?'))return;
+    var x=new XMLHttpRequest();
+    x.open('POST','/api/restart',true);
+    x.send();
+  };
 
   // ── FPS buttons ──
   document.querySelectorAll('#fps-group .fps-btn').forEach(function(btn){

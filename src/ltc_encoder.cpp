@@ -40,6 +40,14 @@ void LtcEncoder::stopTimer() {
     }
 }
 
+void LtcEncoder::setEnabled(bool en) {
+    _enabled = en;
+    if (!en) {
+        digitalWrite(_pin, LOW);
+        gpioState = false;
+    }
+}
+
 void LtcEncoder::setFps(uint8_t fps, bool dropFrame) {
     _fps = fps;
     _dropFrame = dropFrame;
@@ -130,13 +138,15 @@ void IRAM_ATTR LtcEncoder::onHalfBitTick() {
     uint8_t bitIndex = halfBitIndex / 2;
     bool isStartOfBitCell = (halfBitIndex % 2) == 0;
 
-    if (isStartOfBitCell) {
-        gpioState = !gpioState;
-        digitalWrite(_pin, gpioState);
-    } else {
-        if (_bits[bitIndex]) {
+    if (_enabled) {
+        if (isStartOfBitCell) {
             gpioState = !gpioState;
             digitalWrite(_pin, gpioState);
+        } else {
+            if (_bits[bitIndex]) {
+                gpioState = !gpioState;
+                digitalWrite(_pin, gpioState);
+            }
         }
     }
 

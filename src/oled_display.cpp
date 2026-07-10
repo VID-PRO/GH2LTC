@@ -32,7 +32,7 @@ bool OledDisplay::begin() {
 }
 
 void OledDisplay::update(const char *timecode, uint8_t fps, bool locked) {
-    if (!_present) return;
+    if (!_present || !_enabled) return;
     if (strcmp(timecode, _lastTc) == 0 && fps == _lastFps) return;
 
     strncpy(_lastTc, timecode, sizeof(_lastTc) - 1);

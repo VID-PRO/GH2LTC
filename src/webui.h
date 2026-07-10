@@ -8,6 +8,8 @@ typedef void (*FpsCallback)(uint8_t fps, bool dropFrame);
 typedef void (*JamCallback)(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff);
 typedef void (*BrightnessCallback)(uint8_t val);
 typedef void (*MatrixToggleCallback)(bool enabled);
+typedef void (*OledToggleCallback)(bool enabled);
+typedef void (*LtcToggleCallback)(bool enabled);
 
 class WebUI {
 public:
@@ -28,8 +30,12 @@ public:
     void onJamTime(JamCallback cb) { _jamCb = cb; }
     void onSetBrightness(BrightnessCallback cb) { _brightnessCb = cb; }
     void onSetMatrixEnabled(MatrixToggleCallback cb) { _matrixCb = cb; }
+    void onSetOledEnabled(OledToggleCallback cb) { _oledCb = cb; }
+    void onSetLtcEnabled(LtcToggleCallback cb) { _ltcCb = cb; }
 
     bool matrixEnabled() const { return _matrixEnabled; }
+    bool oledEnabled() const { return _oledEnabled; }
+    bool ltcEnabled() const { return _ltcEnabled; }
     uint8_t brightness() const { return _brightness; }
     bool autoFps() const { return _autoFps; }
 
@@ -44,13 +50,15 @@ private:
 
     uint8_t _dd = 0, _hh = 0, _mm = 0, _ss = 0, _ff = 0, _fps = 25;
     uint8_t _brightness = 4;
-    bool _dropFrame = false, _hdmiLocked = false, _matrixEnabled = true, _autoFps = true;
+    bool _dropFrame = false, _hdmiLocked = false, _matrixEnabled = true, _oledEnabled = true, _ltcEnabled = true, _autoFps = true;
     char _source[8] = "FREE";
 
     FpsCallback _fpsCb = nullptr;
     JamCallback _jamCb = nullptr;
     BrightnessCallback _brightnessCb = nullptr;
     MatrixToggleCallback _matrixCb = nullptr;
+    OledToggleCallback _oledCb = nullptr;
+    LtcToggleCallback _ltcCb = nullptr;
 
     IPAddress _apIp;
     IPAddress _staIp;
@@ -74,6 +82,9 @@ private:
     void handleApiJam();
     void handleApiBrightness();
     void handleApiMatrix();
+    void handleApiOled();
+    void handleApiLtc();
+    void handleApiRestart();
     void handleApiWifi();
     void handleApiBle();
     void handleApiMode();

@@ -26,6 +26,10 @@ public:
     // Advance internal LTC time by one frame and keep generating.
     void tick();
 
+    // Enable/disable LTC audio output (stops/starts the ISR timer)
+    void setEnabled(bool en);
+    bool enabled() const { return _enabled; }
+
     // Returns true once (and clears the flag) the first time this is called
     // after a full 80-bit LTC frame has finished transmitting on the wire.
     uint16_t framesCompleted();
@@ -47,6 +51,7 @@ private:
     bool _dropFrame;
     uint64_t _halfBitPeriodUs;
 
+    volatile bool _enabled = true;
     volatile uint8_t _bits[80];
     volatile uint16_t _framesCompleted = 0;
 
