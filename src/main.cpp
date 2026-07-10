@@ -348,6 +348,12 @@ static void printConfig() {
 #else
     Serial.println(F("SLAVE"));
 #endif
+    Serial.print(F("  TC_ENABLED        "));
+#if BLE_MASTER
+    Serial.println(tcPresent ? "1" : "0");
+#else
+    Serial.println("0");
+#endif
     Serial.print(F("  LTC_OUT_PIN       ")); Serial.println(LTC_OUT_PIN);
     Serial.print(F("  LTC_FPS           ")); Serial.println(LTC_FPS);
     Serial.print(F("  LTC_DROP_FRAME    ")); Serial.println(LTC_DROP_FRAME);
