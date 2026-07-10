@@ -510,12 +510,14 @@ void WebUI::handleNotFound() {
 
 String WebUI::_pageHtml() {
     // Part 1: everything before the BLE drawer-section content
-    String html = String(F(R"rawliteral(<!DOCTYPE html>
+    String html = F(R"rawliteral(<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>TC Generator</title>
+<title>)rawliteral");
+    html += bleTimecodeGetName();
+    html += F(R"rawliteral(</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 
@@ -939,21 +941,9 @@ html,body{
     AP <span>__AP_SSID__</span> &nbsp;|&nbsp; <span>__AP_IP__</span><br>
     STA <span>__STA_SSID__</span> &nbsp;|&nbsp; <span>__STA_IP__</span>
   </div>
-  <!-- Mode Switch (dual-mode builds only) -->
-  <div id="mode-section" class="ble-drawer-section">
-    <div class="settings-title">Device Mode</div>
-    <div class="setting-row">
-      <div style="display:flex;gap:8px">)rawliteral"));
-    {
-        int curMode = bleGetMode();
-        html += "<button id=\"mode-master-btn\" class=\"fps-btn" + String(curMode == BLE_MODE_MASTER ? " active" : "") + "\" data-mode=\"1\" onclick=\"switchMode(1)\">Master</button>";
-        html += "<button id=\"mode-slave-btn\" class=\"fps-btn" + String(curMode == BLE_MODE_SLAVE ? " active" : "") + "\" data-mode=\"2\" onclick=\"switchMode(2)\">Slave</button>";
-    }
-    html += String(F(R"rawliteral(      </div>
-      <div style="margin-left:auto;color:#444;font-size:clamp(9px,1.5vw,11px)" id="mode-msg"></div>
-    </div>
-  </div>
-
+)rawliteral");
+#if BLE_MASTER
+    html += F(R"rawliteral(
   <div class="ble-drawer-section" id="ble-section-master">
     <div class="settings-title">BLE Setup &mdash; Master</div>
     <div class="ble-form">
@@ -966,8 +956,10 @@ html,body{
       <div class="ble-msg" id="ble-msg-master"></div>
     </div>
   </div>
-
-  <div class="ble-drawer-section" id="ble-section-slave" style="display:none">
+)rawliteral");
+#elif BLE_SLAVE
+    html += F(R"rawliteral(
+  <div class="ble-drawer-section" id="ble-section-slave">
     <div class="settings-title">BLE Setup &mdash; Slave</div>
     <div class="ble-form">
       <div class="row">
@@ -984,7 +976,8 @@ html,body{
     </div>
     <div id="ble-results"></div>
   </div>
-)rawliteral"));
+)rawliteral");
+#endif
 
     // Part 3: close settings-panel and common JS
     html += String(F(R"rawliteral(</div>
@@ -1206,90 +1199,12 @@ function wifiForget(){
 }
 )rawliteral"));
 
-    // Part 4: BLE JS and Mode JS (unified for all builds)
+    // Part 4: BLE JS (unified for all builds)
     html += String(F(R"rawliteral(
-// ===== Mode switching =====
-var currentMode=1; // BLE_MODE_MASTER=1, BLE_MODE_SLAVE=2
-var modeLocked=false;
-
-function pollMode(){
-  var x=new XMLHttpRequest();
-  x.open('GET','/api/mode',true);
-  x.onload=function(){
-    if(x.status!=200)return;
-    try{
-      var d=JSON.parse(x.responseText);
-      currentMode=d.mode;
-      modeLocked=d.locked||false;
-      updateModeUI();
-      updateBleSectionVisibility();
-    }catch(e){}
-  };
-  x.send();
-}
-
-function switchMode(mode){
-  if(modeLocked)return;
-  var prevMode=currentMode;
-  currentMode=mode;
-  updateModeUI();
-  var msgEl=document.getElementById('mode-msg');
-  msgEl.textContent='Switching...';
-  var x=new XMLHttpRequest();
-  x.open('POST','/api/mode',true);
-  x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
-  x.onload=function(){
-    if(x.status==200){
-      msgEl.textContent='Saved. Rebooting...';
-      setTimeout(function(){location.reload()},2000);
-    }else{
-      currentMode=prevMode;
-      updateModeUI();
-      msgEl.textContent='Error';
-    }
-  };
-  x.send('mode='+mode);
-}
-
-function updateModeUI(){
-  var mBtn=document.getElementById('mode-master-btn');
-  var sBtn=document.getElementById('mode-slave-btn');
-  if(!mBtn||!sBtn)return;
-  if(currentMode===1){mBtn.classList.add('active');sBtn.classList.remove('active')}
-  else{mBtn.classList.remove('active');sBtn.classList.add('active')}
-  if(modeLocked){
-    mBtn.style.opacity='0.5';mBtn.style.pointerEvents='none';
-    sBtn.style.opacity='0.5';sBtn.style.pointerEvents='none';
-  }else{
-    mBtn.style.opacity='1';mBtn.style.pointerEvents='';
-    sBtn.style.opacity='1';sBtn.style.pointerEvents='';
-  }
-  var msgEl=document.getElementById('mode-msg');
-  if(msgEl)msgEl.textContent=modeLocked?'Fixed by build':'';
-}
-
-function updateBleSectionVisibility(){
-  var masterSec=document.getElementById('ble-section-master');
-  var slaveSec=document.getElementById('ble-section-slave');
-  if(!masterSec)return;
-  masterSec.style.display=(currentMode===1)?'':'none';
-  slaveSec.style.display=(currentMode===2)?'':'none';
-}
-
-// ===== Mode switch visibility =====
-(function(){
-  var modeSection=document.getElementById('mode-section');
-  if(modeSection){
-    var isDual=typeof modeLocked!=='undefined';
-    modeSection.style.display='block';
-  }
-})();
-
-// ===== BLE functions (work for both modes) =====
+// ===== BLE functions =====
 function bleSetName(){
-  var isMaster=currentMode===1;
-  var el=document.getElementById(isMaster?'ble-name-input':'ble-slave-name-input');
-  var msgEl=document.getElementById(isMaster?'ble-msg-master':'ble-msg-slave');
+  var el=document.getElementById('ble-name-input');
+  var msgEl=document.getElementById('ble-msg-master');
   var n=el?el.value:'';
   if(!n)return;
   var x=new XMLHttpRequest();
@@ -1415,17 +1330,13 @@ function pollBleSlave(){
 }
 
 // ===== Polling =====
-pollMode();
-
-// Poll BLE according to current mode (check every poll)
-var blePollInterval=setInterval(function(){
-  if(currentMode===1){
-    pollBleMaster();
-  }else if(currentMode===2){
-    pollBleSlave();
-  }
-},3000);
-
+)rawliteral"));
+#if BLE_MASTER
+  html += F("setInterval(pollBleMaster,3000);\n");
+#elif BLE_SLAVE
+  html += F("setInterval(pollBleSlave,3000);\n");
+#endif
+html += String(F(R"rawliteral(
 // Load initial BLE name
 (function(){
   var x=new XMLHttpRequest();

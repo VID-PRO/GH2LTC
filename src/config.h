@@ -10,14 +10,12 @@
 #define TC_I2C_ADDR      0x0F   // default 7-bit address on most TC358743 breakout boards
 
 // TC358743 hardware reset pin (set to -1 if your board doesn't expose RESET)
-#define TC_RESET_PIN     -1
+#define TC_RESET_PIN     7
 
 // LTC audio output pin (goes to your RC filter -> 3.5mm TRS -> LTC input)
 #define LTC_OUT_PIN      6
 
-// Onboard LED used as a simple "locked / not locked" status indicator
-// ESP32-C3 Super Mini typically has the LED on GPIO8
-#define STATUS_LED_PIN   7           // do NOT use GPIO8/9 (USB D-/D+) — they share PLL with WiFi PHY
+// STATUS_LED removed — GPIO7 reused for TC358743 RESETN
 
 // ---------------------------------------------------------------------------
 // Frame rate auto-detection

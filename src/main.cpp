@@ -3,6 +3,7 @@
 #include "esp_system.h"
 #include <Preferences.h>
 #include <esp_efuse.h>
+#include <esp_mac.h>
 #include "config.h"
 #include "tc358743.h"
 #include "tc358743_regs.h"
@@ -22,12 +23,10 @@
 #endif
 #include "ble_timecode.h"
 
-static int currentBleMode = BLE_MODE_MASTER;
-
 // ---------------------------------------------------------------------------
 // Master-specific globals
 // ---------------------------------------------------------------------------
-#if RTC_ENABLE || !defined(BLE_SLAVE)
+#if BLE_MASTER
 TC358743 tc(Wire, TC_I2C_ADDR);
 #endif
 LtcEncoder ltc(LTC_OUT_PIN, LTC_FPS, LTC_DROP_FRAME);
@@ -344,17 +343,16 @@ static void printResetReason() {
 static void printConfig() {
     Serial.println(F("── CONFIG ──────────────────────────────"));
     Serial.print(F("  MODE              "));
-    Serial.println(currentBleMode == BLE_MODE_MASTER ? "MASTER" : "SLAVE");
+#if BLE_MASTER
+    Serial.println(F("MASTER"));
+#else
+    Serial.println(F("SLAVE"));
+#endif
     Serial.print(F("  LTC_OUT_PIN       ")); Serial.println(LTC_OUT_PIN);
-    Serial.print(F("  STATUS_LED_PIN    ")); Serial.println(STATUS_LED_PIN);
     Serial.print(F("  LTC_FPS           ")); Serial.println(LTC_FPS);
     Serial.print(F("  LTC_DROP_FRAME    ")); Serial.println(LTC_DROP_FRAME);
     Serial.print(F("  FPS_AUTO_DETECT   ")); Serial.println(FPS_AUTO_DETECT);
     Serial.print(F("  REVERSE_ENGINEER  ")); Serial.println(REVERSE_ENGINEER_MODE);
-#if defined(BLE_MODE_RUNTIME)
-    Serial.print(F("  HW_PROFILE       FULL (HDMI+RTC+OLED+MAX)"));
-    Serial.println();
-#else
     Serial.print(F("  TC358743 I2C      SDA=")); Serial.print(TC_I2C_SDA_PIN);
     Serial.print(F(" SCL=")); Serial.print(TC_I2C_SCL_PIN);
     Serial.print(F(" ADDR=0x")); Serial.println(TC_I2C_ADDR, HEX);
@@ -367,7 +365,6 @@ static void printConfig() {
         Serial.print(F(" SCL=")); Serial.print(RTC_I2C_SCL_PIN);
         Serial.print(F(" ADDR=0x")); Serial.println(RTC_I2C_ADDR, HEX);
     }
-#endif
 #if WEBUI_ENABLE
     Serial.print(F("  WEBUI_ENABLE      1    AP=")); Serial.print(WEBUI_AP_SSID);
     if (WEBUI_AP_PASSWORD) { Serial.print(F(" (pass)")); }
@@ -385,6 +382,7 @@ static void printConfig() {
 // ===========================================================================
 // Master-specific: I2C/HDMI setup
 // ===========================================================================
+#if BLE_MASTER
 static void masterSetup() {
     // Load persisted FPS/DF from NVS
     {
@@ -481,17 +479,20 @@ static void masterSetup() {
     Serial.print(F("Starting MAX7219 display... "));
     mx7219.begin();
     mx7219.setIntensity(webui.brightness());
-    if (!webui.matrixEnabled()) mx7219.clear();
-    mx7219.showText("MASTER");
-    delay(3000);
+    if (webui.matrixEnabled()) {
+        mx7219.showText("MASTER");
+        delay(3000);
+    }
     Serial.print(MAX7219_NUM_MODULES);
     Serial.println(F(" modules initialized."));
 #endif
 }
+#endif // BLE_MASTER
 
 // ===========================================================================
 // Master-specific: loop
 // ===========================================================================
+#if BLE_MASTER
 static void masterLoop() {
     unsigned long now = millis();
 
@@ -581,7 +582,6 @@ static void masterLoop() {
 #endif
 
         bool hdmiOk = locked && tcPresent && tc.isHdmiMode();
-        digitalWrite(STATUS_LED_PIN, hdmiOk ? HIGH : LOW);
 
         uint16_t frames = ltc.framesCompleted();
         bool frameDone = hdmiOk || (frames > 0);
@@ -632,10 +632,12 @@ static void masterLoop() {
 #endif
     }
 }
+#endif // BLE_MASTER
 
 // ===========================================================================
 // Slave-specific: setup
 // ===========================================================================
+#if BLE_SLAVE
 static void slaveSetup() {
     Wire.begin(TC_I2C_SDA_PIN, TC_I2C_SCL_PIN);
 
@@ -665,8 +667,10 @@ static void slaveSetup() {
 
 #if MAX7219_ENABLE
     mx7219.begin();
-    mx7219.showText("SLAVE");
-    delay(2000);
+    if (webui.matrixEnabled()) {
+        mx7219.showText("SLAVE");
+        delay(2000);
+    }
     Serial.println(F("MAX7219 started"));
 #endif
 
@@ -727,6 +731,7 @@ static void slaveLoop() {
                  bleTimecodeConnected() ? "BLE" : "SCAN");
 #endif
 }
+#endif // BLE_SLAVE
 
 // ===========================================================================
 // setup()
@@ -736,24 +741,12 @@ void setup() {
     delay(2000);
     printResetReason();
 
-    pinMode(STATUS_LED_PIN, OUTPUT);
-    digitalWrite(STATUS_LED_PIN, LOW);
-
-    // Read BLE mode from NVS (dual-mode) or use compile-time mode (single-mode)
-#if defined(BLE_MODE_RUNTIME)
-    {
-        Preferences blePrefs;
-        blePrefs.begin("ble", true);
-        currentBleMode = blePrefs.getInt("mode", BLE_MODE_MASTER);
-        blePrefs.end();
-    }
-#else
-    currentBleMode = bleGetMode();
-#endif
-
     Serial.print(F("GH5 HDMI -> LTC box starting in "));
-    Serial.print(currentBleMode == BLE_MODE_MASTER ? "MASTER" : "SLAVE");
-    Serial.println(F(" mode..."));
+#if BLE_MASTER
+    Serial.println(F("MASTER mode..."));
+#else
+    Serial.println(F("SLAVE mode..."));
+#endif
     Serial.println();
 
     printConfig();
@@ -771,22 +764,21 @@ void setup() {
         char macSuffix[8];
         snprintf(macSuffix, sizeof(macSuffix), "%02X%02X", mac[4], mac[5]);
 
-        if (currentBleMode == BLE_MODE_MASTER) {
-            String bleName = blePrefs.getString("name", "TC-LTC-MASTER");
-            if (bleName == "TC-LTC-MASTER") {
-                snprintf(apSsid, sizeof(apSsid), "GH2LTC_%s", macSuffix);
-            } else {
-                strncpy(apSsid, bleName.c_str(), sizeof(apSsid) - 1);
-                apSsid[sizeof(apSsid) - 1] = '\0';
-            }
+#if BLE_MASTER
+        String bleName = blePrefs.getString("name", "TC-LTC-MASTER");
+        if (bleName == "TC-LTC-MASTER") {
+            snprintf(apSsid, sizeof(apSsid), "GH2LTC_%s", macSuffix);
         } else {
-            // Slave: default is "TC-SLAVE-XXXX", custom name replaces it
-            char defaultSlaveName[33];
-            snprintf(defaultSlaveName, sizeof(defaultSlaveName), "TC-SLAVE-%s", macSuffix);
-            String bleName = blePrefs.getString("slave_name", defaultSlaveName);
             strncpy(apSsid, bleName.c_str(), sizeof(apSsid) - 1);
             apSsid[sizeof(apSsid) - 1] = '\0';
         }
+#else
+        char defaultSlaveName[33];
+        snprintf(defaultSlaveName, sizeof(defaultSlaveName), "TC-SLAVE-%s", macSuffix);
+        String bleName = blePrefs.getString("slave_name", defaultSlaveName);
+        strncpy(apSsid, bleName.c_str(), sizeof(apSsid) - 1);
+        apSsid[sizeof(apSsid) - 1] = '\0';
+#endif
         blePrefs.end();
     }
     Serial.print(F("Starting WiFi AP... "));
@@ -858,15 +850,17 @@ void setup() {
     {
         Serial.print(F("BLE init... "));
         bleTimecodeInit();
+#if BLE_SLAVE
         bleTimecodeSetCallback(onBleTimecode);
+#endif
         Serial.println(F("done"));
     }
 
-    if (currentBleMode == BLE_MODE_MASTER) {
-        masterSetup();
-    } else {
-        slaveSetup();
-    }
+#if BLE_MASTER
+    masterSetup();
+#else
+    slaveSetup();
+#endif
 
     Serial.println(F("System ready."));
 }
@@ -879,9 +873,9 @@ void loop() {
     webui.handleClient();
 #endif
 
-    if (currentBleMode == BLE_MODE_MASTER) {
-        masterLoop();
-    } else {
-        slaveLoop();
-    }
+#if BLE_MASTER
+    masterLoop();
+#else
+    slaveLoop();
+#endif
 }

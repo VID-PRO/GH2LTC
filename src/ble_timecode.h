@@ -1,10 +1,12 @@
 #pragma once
 #include <Arduino.h>
-#include <BLEUUID.h>
 
+#ifdef SOC_BLE_SUPPORTED
+#include <BLEUUID.h>
 extern const BLEUUID bleTimecodeServiceUUID;
 extern const BLEUUID bleTimecodeCharUUID;
 extern const BLEUUID bleTimecodeNameCharUUID;
+#endif
 
 // Runtime mode management (always available)
 int bleGetMode();
