@@ -353,10 +353,12 @@ static void printConfig() {
     Serial.print(F("  LTC_DROP_FRAME    ")); Serial.println(LTC_DROP_FRAME);
     Serial.print(F("  FPS_AUTO_DETECT   ")); Serial.println(FPS_AUTO_DETECT);
     Serial.print(F("  REVERSE_ENGINEER  ")); Serial.println(REVERSE_ENGINEER_MODE);
+#if BLE_MASTER
     Serial.print(F("  TC358743 I2C      SDA=")); Serial.print(TC_I2C_SDA_PIN);
     Serial.print(F(" SCL=")); Serial.print(TC_I2C_SCL_PIN);
     Serial.print(F(" ADDR=0x")); Serial.println(TC_I2C_ADDR, HEX);
     Serial.print(F("  TC_RESET_PIN      ")); Serial.println(TC_RESET_PIN);
+#endif
     Serial.print(F("  OLED_ENABLE       ")); Serial.println(OLED_ENABLE);
     if (OLED_ENABLE) { Serial.print(F("  OLED_I2C_ADDR    0x")); Serial.println(OLED_I2C_ADDR, HEX); }
     Serial.print(F("  RTC_ENABLE        ")); Serial.println(RTC_ENABLE);
