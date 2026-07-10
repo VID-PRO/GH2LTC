@@ -361,6 +361,7 @@ static void printConfig() {
 #endif
     Serial.print(F("  OLED_ENABLE       ")); Serial.println(OLED_ENABLE);
     if (OLED_ENABLE) { Serial.print(F("  OLED_I2C_ADDR    0x")); Serial.println(OLED_I2C_ADDR, HEX); }
+    Serial.print(F("  LTC_ENABLED       ")); Serial.println(webui.ltcEnabled() ? "1" : "0");
     Serial.print(F("  RTC_ENABLE        ")); Serial.println(RTC_ENABLE);
     if (RTC_ENABLE) {
         Serial.print(F("  RTC I2C           SDA=")); Serial.print(RTC_I2C_SDA_PIN);
@@ -459,10 +460,12 @@ static void masterSetup() {
         ltc.setTime(1, 0, 0, 0);
 #endif
 #if OLED_ENABLE
-        if (oled.begin()) {
-            Serial.println(F("OLED display initialized."));
-        } else {
-            Serial.println(F("OLED not detected — skipping."));
+        if (webui.oledEnabled()) {
+            if (oled.begin()) {
+                Serial.println(F("OLED display initialized."));
+            } else {
+                Serial.println(F("OLED not detected — skipping."));
+            }
         }
 #endif
     } else {
@@ -665,8 +668,12 @@ static void slaveSetup() {
 #endif
 
 #if OLED_ENABLE
-    oled.begin();
-    Serial.println(F("OLED started"));
+    if (webui.oledEnabled()) {
+        oled.begin();
+        Serial.println(F("OLED started"));
+    } else {
+        Serial.println(F("OLED disabled"));
+    }
 #endif
 
 #if MAX7219_ENABLE
@@ -754,8 +761,6 @@ void setup() {
     Serial.println(F("SLAVE mode..."));
 #endif
     Serial.println();
-
-    printConfig();
 
     // Start WiFi AP + web server BEFORE LTC timer
 #if WEBUI_ENABLE
@@ -861,6 +866,10 @@ void setup() {
         }
     });
 #endif
+
+    printConfig();
+
+    Serial.println();
 
     // Init BLE (starts server for master, scanner for slave)
     {
