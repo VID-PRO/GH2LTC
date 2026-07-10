@@ -360,7 +360,7 @@ static void printConfig() {
     Serial.print(F(" ADDR=0x")); Serial.println(TC_I2C_ADDR, HEX);
     Serial.print(F("  TC_RESET_PIN      ")); Serial.println(TC_RESET_PIN);
 #endif
-    Serial.print(F("  OLED_ENABLE       ")); Serial.println(OLED_ENABLE);
+    Serial.print(F("  OLED_ENABLED      ")); Serial.println(webui.oledEnabled() ? "1" : "0");
     if (OLED_ENABLE) { Serial.print(F("  OLED_I2C_ADDR    0x")); Serial.println(OLED_I2C_ADDR, HEX); }
     Serial.print(F("  RTC_ENABLE        ")); Serial.println(RTC_ENABLE);
     if (RTC_ENABLE) {
@@ -402,10 +402,10 @@ static void masterSetup() {
 
     // Start LTC encoder
 #ifndef SKIP_LTC_TIMER
-    Serial.print(F("Starting LTC timer... "));
     ltc.begin();
     ltc.setTime(1, 0, 0, 0);
-    Serial.println(F("OK"));
+    Serial.print(F("LTC encoder "));
+    Serial.println(webui.ltcEnabled() ? F("started") : F("disabled"));
 #else
     Serial.println(F("LTC timer SKIPPED (debug)"));
 #endif
@@ -650,7 +650,8 @@ static void slaveSetup() {
 
     ltc.begin();
     ltc.setTime(0, 0, 0, 0);
-    Serial.println(F("LTC encoder started"));
+    Serial.print(F("LTC encoder "));
+    Serial.println(webui.ltcEnabled() ? F("started") : F("disabled"));
 
 #if RTC_ENABLE
     rtcPresent = rtc.begin(RTC_I2C_SDA_PIN, RTC_I2C_SCL_PIN);
