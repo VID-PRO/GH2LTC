@@ -348,12 +348,7 @@ static void printConfig() {
 #else
     Serial.println(F("SLAVE"));
 #endif
-    Serial.print(F("  TC_ENABLED        "));
-#if BLE_MASTER
-    Serial.println(tcPresent ? "1" : "0");
-#else
-    Serial.println("0");
-#endif
+    Serial.print(F("  LTC_ENABLED       ")); Serial.println(webui.ltcEnabled() ? "1" : "0");
     Serial.print(F("  LTC_OUT_PIN       ")); Serial.println(LTC_OUT_PIN);
     Serial.print(F("  LTC_FPS           ")); Serial.println(LTC_FPS);
     Serial.print(F("  LTC_DROP_FRAME    ")); Serial.println(LTC_DROP_FRAME);
@@ -367,7 +362,6 @@ static void printConfig() {
 #endif
     Serial.print(F("  OLED_ENABLE       ")); Serial.println(OLED_ENABLE);
     if (OLED_ENABLE) { Serial.print(F("  OLED_I2C_ADDR    0x")); Serial.println(OLED_I2C_ADDR, HEX); }
-    Serial.print(F("  LTC_ENABLED       ")); Serial.println(webui.ltcEnabled() ? "1" : "0");
     Serial.print(F("  RTC_ENABLE        ")); Serial.println(RTC_ENABLE);
     if (RTC_ENABLE) {
         Serial.print(F("  RTC I2C           SDA=")); Serial.print(RTC_I2C_SDA_PIN);
