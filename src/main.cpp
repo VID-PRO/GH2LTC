@@ -819,9 +819,7 @@ static void slaveLoop() {
 #else
     mx7219.showTimecode(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
 #endif
-#if BLE_CLAP
     mx7219.setBleConnected(bleTimecodeConnected());
-#endif
 #endif
 
 #if WEBUI_ENABLE

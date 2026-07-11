@@ -64,7 +64,7 @@ void WebUI::begin(const char *apSsid, const char *apPassword,
     // Load brightness and matrix state from NVS (read/write to auto-create namespace)
     _prefs.begin("webui", false);
     _brightness = _prefs.getUChar("brightness", 4);
-    _matrixEnabled = _prefs.getBool("matrix_en", true);
+    _matrixEnabled = _prefs.getBool("matrix_en", MATRIX_ENABLED_DEFAULT);
     _oledEnabled = _prefs.getBool("oled_en", true);
     _ltcEnabled = _prefs.getBool("ltc_en", true);
     _prefs.end();

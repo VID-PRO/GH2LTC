@@ -53,6 +53,10 @@
 #endif
 
 // ---------------------------------------------------------------------------
+#ifndef MATRIX_ENABLED_DEFAULT
+#define MATRIX_ENABLED_DEFAULT 0
+#endif
+
 // MAX7219 8x8 LED matrix display configuration (optional — set to 0 to skip)
 // 8 modules daisy-chained = 64x8 pixels. Software SPI (no hardware SPI on these pins).
 // Pins: see schematic for wiring on ESP32-C3 Super Mini.

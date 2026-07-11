@@ -170,17 +170,19 @@ Open `http://192.168.4.1` (AP mode) or the ESP's STA IP. The header displays a c
 | Setting | Master (HDMI + BLE server) | Slave (BLE client, no HDMI) | Clap (LED matrix only) |
 |---------|---------------------------|-----------------------------|------------------------|
 | WiFi AP SSID | `GH2LTC_` + last 4 MAC digits | `TC-SLAVE-` + last 4 MAC digits | `TC-CLAP-` + last 4 MAC digits |
-| FPS | Auto (re-detect) | 25 | 25 |
+| FPS | Auto (re-detect) | Auto (re-detect†) | Auto (re-detect†) |
 | Drop frame | Off | Off | Off |
-| RTC | Optional (DS3231) | Optional (DS3231) | Disabled |
+| RTC | Optional (DS3231) | Optional (DS3231) | Optional (DS3231) |
 | OLED | Optional (SSD1306) | Optional (SSD1306) | Disabled |
-| MAX7219 matrix | Enabled by default | Enabled by default | Enabled by default |
+| MAX7219 matrix | Off by default | Off by default | Enabled by default |
 | Matrix brightness | 4 (0–15) | 4 | 4 |
-| BLE indicator (matrix) | — | — | 3-pixel dot (bottom-left) when connected |
+| BLE indicator (matrix) | — | 3-pixel dot (bottom-left) when connected | 3-pixel dot (bottom-left) when connected |
 | LTC output pin | GPIO6 | GPIO6 | GPIO6 |
 | TC_RESET_PIN | -1 (unused) | — | — |
 | Reverse-engineer mode | 0 | 0 | 0 |
 | BLE role | Master (advertise + notify) | Slave (scan + subscribe) | Slave (scan + subscribe) |
+
+† Relies on HDMI frame-sync on master; no-op on slave/clap (falls back to configured FPS).
 
 ---
 
