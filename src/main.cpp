@@ -654,7 +654,7 @@ static void masterLoop() {
 #if OLED_ENABLE
         if (webui.oledEnabled()) {
             fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
-            oled.update(tcStr, ltc.fps(), hdmiOk);
+            oled.update(tcStr, ltc.fps(), hdmiOk, "Master", tcSource, bleTimecodeConnectedCount());
         }
 #endif
 #if MAX7219_ENABLE
@@ -760,7 +760,8 @@ static void slaveLoop() {
 #if OLED_ENABLE
     if (webui.oledEnabled()) {
         fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
-        oled.update(tcStr, ltc.fps(), bleTimecodeConnected());
+        bool bleOk = bleTimecodeConnected();
+        oled.update(tcStr, ltc.fps(), bleOk, "Slave", bleOk ? "LINK" : "FREE");
     }
 #endif
 

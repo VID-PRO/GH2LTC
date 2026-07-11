@@ -11,7 +11,7 @@ public:
     OledDisplay();
 
     bool begin();
-    void update(const char *timecode, uint8_t fps, bool locked);
+    void update(const char *timecode, uint8_t fps, bool locked, const char *role, const char *source, uint8_t slaveCount = 0);
     void setEnabled(bool en) { _enabled = en; }
     bool enabled() const { return _enabled; }
 

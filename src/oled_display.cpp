@@ -20,15 +20,28 @@ bool OledDisplay::begin() {
     int w = _u8g2.getStrWidth("HDMI2LTC");
     _u8g2.drawStr((128 - w) / 2, 9, "HDMI2LTC");
 
-    w = _u8g2.getStrWidth("(c) by VID-PRO");
-    _u8g2.drawStr((128 - w) / 2, 63, "(c) by VID-PRO");
+    const char *role =
+#if BLE_MASTER
+        "Master"
+#elif BLE_SLAVE
+        "Slave"
+#else
+        "?"
+#endif
+        ;
+    char bottom[24];
+    snprintf(bottom, sizeof(bottom), "%s  --  --", role);
+    w = _u8g2.getStrWidth(bottom);
+    _u8g2.drawStr((128 - w) / 2, 63, bottom);
 
     _u8g2.sendBuffer();
     _present = true;
     return true;
 }
 
-void OledDisplay::update(const char *timecode, uint8_t fps, bool locked) {
+void OledDisplay::update(const char *timecode, uint8_t fps, bool locked,
+                         const char *role, const char *source,
+                         uint8_t slaveCount) {
     if (!_present || !_enabled) return;
     if (strcmp(timecode, _lastTc) == 0 && fps == _lastFps) return;
 
@@ -49,13 +62,21 @@ void OledDisplay::update(const char *timecode, uint8_t fps, bool locked) {
             _u8g2.drawStr(126 - _u8g2.getStrWidth(fpsStr), 7, fpsStr);
         }
 
-        _u8g2.setFont(u8g2_font_logisoso24_tf);
+        _u8g2.setFont(u8g2_font_logisoso18_tf);
         w = _u8g2.getStrWidth(timecode);
         _u8g2.drawStr((128 - w) / 2, 46, timecode);
 
         _u8g2.setFont(u8g2_font_6x10_tf);
-        w = _u8g2.getStrWidth("(c) by VID-PRO");
-        _u8g2.drawStr((128 - w) / 2, 63, "(c) by VID-PRO");
+        char bottom[24];
+        snprintf(bottom, sizeof(bottom), "%s  %s  %d", role, source, fps);
+        w = _u8g2.getStrWidth(bottom);
+        _u8g2.drawStr((128 - w) / 2, 63, bottom);
+        if (slaveCount > 0) {
+            char cnt[6];
+            snprintf(cnt, sizeof(cnt), "+%d", slaveCount);
+            w = _u8g2.getStrWidth(cnt);
+            _u8g2.drawStr(126 - w, 63, cnt);
+        }
     } while (_u8g2.nextPage());
 }
 #endif
