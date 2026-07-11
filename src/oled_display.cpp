@@ -63,8 +63,8 @@ void OledDisplay::update(const char *timecode, uint8_t fps, bool locked,
         }
 
         _u8g2.setFont(u8g2_font_logisoso18_tf);
-        w = _u8g2.getStrWidth(timecode);
-        _u8g2.drawStr((128 - w) / 2, 46, timecode);
+        const int timecodeX = (128 - _u8g2.getStrWidth("88:88:88:88")) / 2;
+        _u8g2.drawStr(timecodeX, 46, timecode);
 
         _u8g2.setFont(u8g2_font_6x10_tf);
         char bottom[24];
