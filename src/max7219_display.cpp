@@ -85,6 +85,11 @@ void Max7219Display::showTimecode(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss
         }
     }
 
+    if (_bleConnected) {
+        buf[63] |= 0xC0;
+        buf[62] |= 0x80;
+    }
+
     for (uint8_t i = 0; i < 64; i++) {
         _mx.setColumn(i, buf[63 - i]);
     }
@@ -93,13 +98,12 @@ void Max7219Display::showTimecode(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss
 
 void Max7219Display::setBleConnected(bool en) {
     _bleConnected = en;
-    _applyBleIndicator();
-}
-
-void Max7219Display::_applyBleIndicator() {
-    if (_bleConnected) {
-        _mx.setColumn(0, _mx.getColumn(0) | 0xC0);
-        _mx.setColumn(1, _mx.getColumn(1) | 0x80);
+    if (en) {
+        _mx.setColumn(63, _mx.getColumn(63) | 0xC0);
+        _mx.setColumn(62, _mx.getColumn(62) | 0x80);
+    } else {
+        _mx.setColumn(63, _mx.getColumn(63) & ~0xC0);
+        _mx.setColumn(62, _mx.getColumn(62) & ~0x80);
     }
     _mx.update();
 }

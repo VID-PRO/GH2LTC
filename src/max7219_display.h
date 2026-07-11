@@ -17,7 +17,6 @@ private:
     MD_MAX72XX _mx;
     char _lastTc[11];
     bool _bleConnected = false;
-    void _applyBleIndicator();
 
     void _drawChar(uint8_t *buf, uint8_t col, char c);
     static const uint8_t _font[25][5];
