@@ -88,8 +88,5 @@ private:
     void handleApiWifi();
     void handleApiBle();
     void handleApiMode();
-#if !defined(BLE_SLAVE) || defined(BLE_MODE_RUNTIME)
-    void handleLogo();
-#endif
     void handleNotFound();
 };

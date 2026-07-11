@@ -1,7 +1,4 @@
 #include "webui.h"
-#if !defined(BLE_SLAVE) || defined(BLE_MODE_RUNTIME)
-#include "logo_data.h"
-#endif
 #include "../timecode/ble_timecode.h"
 
 WebUI::WebUI() : _server(80) {
@@ -59,9 +56,6 @@ void WebUI::begin(const char *apSsid, const char *apPassword,
     _server.on("/api/wifi",  HTTP_ANY,  std::bind(&WebUI::handleApiWifi,  this));
     _server.on("/api/ble",   HTTP_ANY,  std::bind(&WebUI::handleApiBle,   this));
     _server.on("/api/mode",  HTTP_ANY,  std::bind(&WebUI::handleApiMode,  this));
-#if !defined(BLE_SLAVE) || defined(BLE_MODE_RUNTIME)
-    _server.on("/logo.png",            std::bind(&WebUI::handleLogo,    this));
-#endif
     _server.onNotFound(      std::bind(&WebUI::handleNotFound, this));
 
     _server.begin();
@@ -523,20 +517,6 @@ void WebUI::handleApiMode() {
 #endif
 #endif
 }
-
-#if !defined(BLE_SLAVE) || defined(BLE_MODE_RUNTIME)
-// -----------------------------------------------------------------------
-// GET /logo.png  — serve the logo image from PROGMEM
-// -----------------------------------------------------------------------
-void WebUI::handleLogo() {
-#if defined(BLE_MODE_RUNTIME)
-    if (bleGetMode() != BLE_MODE_MASTER) { handleNotFound(); return; }
-#endif
-    _server.setContentLength(logo_png_len);
-    _server.send(200, "image/png", "");
-    _server.sendContent_P((PGM_P)logo_png, logo_png_len);
-}
-#endif
 
 // -----------------------------------------------------------------------
 // GET /  — serve the full web app page (with runtime IPs injected)

@@ -127,7 +127,6 @@ src/config_slave.h             -include for slave env
 src/config_clap.h              -include for clap env
 src/config_master.h            -include for master env
 src/main.cpp                   compile-time dispatch: master/slave paths
-src/logo_data.h                PROGMEM byte array for logo.png
 src/webui/                     WiFi AP/STA, HTTP server, NVS, embedded JS/CSS/HTML
 src/hdmi/                      TC358743 I2C driver + register map + GH5 timecode decoder
 src/ltc/                       esp_timer-based SMPTE-12M LTC generator
