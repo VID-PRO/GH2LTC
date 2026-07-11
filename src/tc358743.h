@@ -18,7 +18,7 @@
 //     NOT been tested against real silicon by this generator. Budget time
 //     for bring-up/debugging against your specific breakout board.
 
-extern const uint8_t EDID_1080P30[256];
+extern const uint8_t EDID_1080P25[256];
 
 class TC358743 {
 public:

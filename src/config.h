@@ -9,13 +9,13 @@
 #define TC_I2C_SCL_PIN   5
 #define TC_I2C_ADDR      0x0F   // default 7-bit address on most TC358743 breakout boards
 
-// TC358743 hardware reset pin (set to -1 if your board doesn't expose RESET)
-#define TC_RESET_PIN     7
+// TC358743 hardware reset pin (-1 = skip, rely on internal power-on reset)
+#define TC_RESET_PIN     -1
 
 // LTC audio output pin (goes to your RC filter -> 3.5mm TRS -> LTC input)
 #define LTC_OUT_PIN      6
 
-// STATUS_LED removed — GPIO7 reused for TC358743 RESETN
+// TC358743 RESETN has internal pull-up — no GPIO needed
 
 // ---------------------------------------------------------------------------
 // Frame rate auto-detection
@@ -77,4 +77,4 @@
 // ---------------------------------------------------------------------------
 // Operating mode
 // ---------------------------------------------------------------------------
-#define REVERSE_ENGINEER_MODE 0
+#define REVERSE_ENGINEER_MODE 1

@@ -7,7 +7,6 @@
 #include <BLEAdvertising.h>
 #include <BLEUUID.h>
 #include <BLE2902.h>
-#include <esp_efuse.h>
 #include <Preferences.h>
 #include <string>
 #include <cstring>
@@ -43,6 +42,13 @@ class ServerCallbacks : public BLEServerCallbacks {
     void onConnect(BLEServer *pServer) override {
         deviceConnected = true;
     }
+    void onDisconnect(BLEServer *pServer) override {
+        deviceConnected = false;
+        peers.clear();
+        BLEDevice::getAdvertising()->start();
+    }
+
+#if defined(CONFIG_BLUEDROID_ENABLED)
     void onConnect(BLEServer *pServer, esp_ble_gatts_cb_param_t *param) override {
         deviceConnected = true;
         PeerInfo pi;
@@ -55,11 +61,6 @@ class ServerCallbacks : public BLEServerCallbacks {
         pi.connId = param->connect.conn_id;
         peers.push_back(pi);
     }
-    void onDisconnect(BLEServer *pServer) override {
-        deviceConnected = false;
-        peers.clear();
-        BLEDevice::getAdvertising()->start();
-    }
     void onDisconnect(BLEServer *pServer, esp_ble_gatts_cb_param_t *param) override {
         uint16_t cid = param->disconnect.conn_id;
         peers.erase(std::remove_if(peers.begin(), peers.end(),
@@ -67,21 +68,70 @@ class ServerCallbacks : public BLEServerCallbacks {
         deviceConnected = !peers.empty();
         BLEDevice::getAdvertising()->start();
     }
+#endif
+
+#if defined(CONFIG_NIMBLE_ENABLED)
+    void onConnect(BLEServer *pServer, ble_gap_conn_desc *desc) override {
+        deviceConnected = true;
+        PeerInfo pi;
+        snprintf(pi.address, sizeof(pi.address),
+                 "%02x:%02x:%02x:%02x:%02x:%02x",
+                 desc->peer_id_addr.val[5], desc->peer_id_addr.val[4],
+                 desc->peer_id_addr.val[3], desc->peer_id_addr.val[2],
+                 desc->peer_id_addr.val[1], desc->peer_id_addr.val[0]);
+        pi.name[0] = '\0';
+        pi.connId = desc->conn_handle;
+        peers.push_back(pi);
+    }
+    void onDisconnect(BLEServer *pServer, ble_gap_conn_desc *desc) override {
+        uint16_t cid = desc->conn_handle;
+        peers.erase(std::remove_if(peers.begin(), peers.end(),
+            [cid](const PeerInfo &p) { return p.connId == cid; }), peers.end());
+        deviceConnected = !peers.empty();
+        BLEDevice::getAdvertising()->start();
+    }
+#endif
 };
 
 class SlaveNameCallbacks : public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic *pChar) override {
+        auto val = pChar->getValue();
+        for (auto &p : peers) {
+            size_t len = std::min((size_t)val.length(), sizeof(p.name) - 1);
+            memcpy(p.name, val.c_str(), len);
+            p.name[len] = '\0';
+        }
+    }
+
+#if defined(CONFIG_BLUEDROID_ENABLED)
     void onWrite(BLECharacteristic *pChar, esp_ble_gatts_cb_param_t *param) override {
         uint16_t cid = param->write.conn_id;
-        std::string val = pChar->getValue();
+        auto val = pChar->getValue();
         for (auto &p : peers) {
             if (p.connId == cid) {
-                size_t len = std::min(val.size(), sizeof(p.name) - 1);
-                memcpy(p.name, val.data(), len);
+                size_t len = std::min((size_t)val.length(), sizeof(p.name) - 1);
+                memcpy(p.name, val.c_str(), len);
                 p.name[len] = '\0';
                 break;
             }
         }
     }
+#endif
+
+#if defined(CONFIG_NIMBLE_ENABLED)
+    void onWrite(BLECharacteristic *pChar, ble_gap_conn_desc *desc) override {
+        uint16_t cid = desc->conn_handle;
+        auto val = pChar->getValue();
+        for (auto &p : peers) {
+            if (p.connId == cid) {
+                size_t len = std::min((size_t)val.length(), sizeof(p.name) - 1);
+                memcpy(p.name, val.c_str(), len);
+                p.name[len] = '\0';
+                break;
+            }
+        }
+    }
+#endif
 };
 
 int bleGetMode() { return BLE_MODE_MASTER; }
@@ -137,7 +187,7 @@ uint8_t bleTimecodeGetPeers(BlePeerInfo *out, uint8_t maxPeers) {
 }
 
 void bleTimecodeInit() {
-    blePrefs.begin(NVS_NS, true);
+    blePrefs.begin(NVS_NS, false);
     String saved = blePrefs.getString("name", "TC-LTC-MASTER");
     blePrefs.end();
     strncpy(bleName, saved.c_str(), sizeof(bleName) - 1);
@@ -152,7 +202,6 @@ void bleTimecodeInit() {
         bleTimecodeCharUUID,
         BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
     );
-    tcChar->addDescriptor(new BLE2902());
     uint8_t init[5] = {0, 0, 0, 0, 0};
     tcChar->setValue(init, 5);
 
@@ -160,7 +209,6 @@ void bleTimecodeInit() {
         bleTimecodeNameCharUUID,
         BLECharacteristic::PROPERTY_WRITE
     );
-    nameChar->addDescriptor(new BLE2902());
     nameChar->setCallbacks(new SlaveNameCallbacks());
     nameChar->setValue("");
 
@@ -206,6 +254,9 @@ static char selectedAddr[18] = "";
 static char connectedAddr[18] = "";
 static char connectedName[33] = "";
 static char slaveBleName[33] = "TC-LTC-SLAVE";
+static bool pendingConnect = false;
+static char pendingAddr[18] = "";
+static char pendingName[33] = "";
 
 class ClientCallbacks : public BLEClientCallbacks {
     void onConnect(BLEClient *) override {
@@ -226,10 +277,12 @@ static void notifyCallback(BLERemoteCharacteristic *, uint8_t *data, size_t len,
     }
 }
 
-static bool tryConnect(BLEAdvertisedDevice &dev) {
+static bool tryConnectAddr(const char *addrStr, const char *nameStr) {
+    String addrStr2(addrStr);
+    BLEAddress addr(addrStr2);
     client = BLEDevice::createClient();
     client->setClientCallbacks(new ClientCallbacks());
-    if (!client->connect(&dev)) {
+    if (!client->connect(addr)) {
         delete client;
         client = nullptr;
         return false;
@@ -254,15 +307,10 @@ static bool tryConnect(BLEAdvertisedDevice &dev) {
     remoteChar->registerForNotify(notifyCallback);
     connected = true;
 
-    BLEAddress addr = dev.getAddress();
-    snprintf(connectedAddr, sizeof(connectedAddr),
-             "%02x:%02x:%02x:%02x:%02x:%02x",
-             addr.getNative()[5], addr.getNative()[4],
-             addr.getNative()[3], addr.getNative()[2],
-             addr.getNative()[1], addr.getNative()[0]);
-    const char *dn = dev.getName().c_str();
-    if (dn && dn[0]) {
-        strncpy(connectedName, dn, sizeof(connectedName) - 1);
+    strncpy(connectedAddr, addrStr, sizeof(connectedAddr) - 1);
+    connectedAddr[sizeof(connectedAddr) - 1] = '\0';
+    if (nameStr && nameStr[0]) {
+        strncpy(connectedName, nameStr, sizeof(connectedName) - 1);
         connectedName[sizeof(connectedName) - 1] = '\0';
     } else {
         snprintf(connectedName, sizeof(connectedName),
@@ -276,11 +324,23 @@ static bool tryConnect(BLEAdvertisedDevice &dev) {
     return true;
 }
 
+static bool tryConnect(BLEAdvertisedDevice &dev) {
+    BLEAddress addr = dev.getAddress();
+    char addrStr[18];
+    snprintf(addrStr, sizeof(addrStr),
+             "%02x:%02x:%02x:%02x:%02x:%02x",
+             addr.getNative()[5], addr.getNative()[4],
+             addr.getNative()[3], addr.getNative()[2],
+             addr.getNative()[1], addr.getNative()[0]);
+    const char *dn = dev.getName().c_str();
+    return tryConnectAddr(addrStr, (dn && dn[0]) ? dn : nullptr);
+}
+
 int bleGetMode() { return BLE_MODE_SLAVE; }
 void bleSetMode(int mode) {}
 
 void bleTimecodeInit() {
-    blePrefs.begin(NVS_NS, true);
+    blePrefs.begin(NVS_NS, false);
     String saved = blePrefs.isKey("master") ? blePrefs.getString("master", "") : "";
     String savedName = blePrefs.getString("slave_name", "TC-LTC-SLAVE");
     blePrefs.end();
@@ -304,24 +364,37 @@ static void scanCompleteCb(BLEScanResults scanResults) {
         if (!dev.haveServiceUUID() || !dev.isAdvertisingService(bleTimecodeServiceUUID))
             continue;
 
-        if (selectedAddr[0]) {
-            BLEAddress addr = dev.getAddress();
-            char addrStr[18];
-            snprintf(addrStr, sizeof(addrStr),
-                     "%02x:%02x:%02x:%02x:%02x:%02x",
-                     addr.getNative()[5], addr.getNative()[4],
-                     addr.getNative()[3], addr.getNative()[2],
-                     addr.getNative()[1], addr.getNative()[0]);
-            if (strcmp(addrStr, selectedAddr) != 0) continue;
-        }
+        BLEAddress addr = dev.getAddress();
+        char addrStr[18];
+        snprintf(addrStr, sizeof(addrStr),
+                 "%02x:%02x:%02x:%02x:%02x:%02x",
+                 addr.getNative()[5], addr.getNative()[4],
+                 addr.getNative()[3], addr.getNative()[2],
+                 addr.getNative()[1], addr.getNative()[0]);
 
-        if (tryConnect(dev)) break;
+        if (selectedAddr[0] && strcmp(addrStr, selectedAddr) != 0) continue;
+
+        strncpy(pendingAddr, addrStr, sizeof(pendingAddr) - 1);
+        pendingAddr[sizeof(pendingAddr) - 1] = '\0';
+        const char *dn = dev.getName().c_str();
+        if (dn && dn[0]) {
+            strncpy(pendingName, dn, sizeof(pendingName) - 1);
+            pendingName[sizeof(pendingName) - 1] = '\0';
+        } else {
+            pendingName[0] = '\0';
+        }
+        pendingConnect = true;
+        break;
     }
-    BLEDevice::getScan()->clearResults();
 }
 
 void bleTimecodePoll() {
     if (connected || scanPending) return;
+
+    if (pendingConnect) {
+        pendingConnect = false;
+        if (tryConnectAddr(pendingAddr, pendingName)) return;
+    }
 
     unsigned long now = millis();
     if (now - lastScan < 5000) return;

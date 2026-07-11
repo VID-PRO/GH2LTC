@@ -1,7 +1,7 @@
 #pragma once
 #include <Arduino.h>
 
-#ifdef SOC_BLE_SUPPORTED
+#if defined(SOC_BLE_SUPPORTED) || defined(CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE)
 #include <BLEUUID.h>
 extern const BLEUUID bleTimecodeServiceUUID;
 extern const BLEUUID bleTimecodeCharUUID;

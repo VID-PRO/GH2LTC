@@ -112,7 +112,7 @@ static bool tryDetectFps() {
 // ---------------------------------------------------------------------------
 // Reverse-engineer mode helpers (master only)
 // ---------------------------------------------------------------------------
-#if REVERSE_ENGINEER_MODE
+#if defined(BLE_MASTER) && REVERSE_ENGINEER_MODE
 void dumpBuffer(const char *label, uint16_t reg, size_t len) {
     uint8_t buf[32];
     if (len > sizeof(buf)) len = sizeof(buf);
@@ -178,14 +178,14 @@ void runReverseEngineerDump() {
         tc.writeReg8(EDID_MODE, 0x00); // disable EDID
         delay(50);
         // Re-write EDID
-        tc.writeEdidByteByByte(EDID_1080P30, sizeof(EDID_1080P30));
+        tc.writeEdidByteByByte(EDID_1080P25, sizeof(EDID_1080P25));
         delay(10);
         // EDID reshow (Linux driver sequence)
         tc.writeReg8(EDID_LEN1, 0x00);
         tc.writeReg8(EDID_LEN2, 0x00);
         tc.writeReg8(EDID_SEG_NUM, 0x00);
-        tc.writeReg8(EDID_LEN1, sizeof(EDID_1080P30) & 0xFF);
-        tc.writeReg8(EDID_LEN2, (sizeof(EDID_1080P30) >> 8) & 0xFF);
+        tc.writeReg8(EDID_LEN1, sizeof(EDID_1080P25) & 0xFF);
+        tc.writeReg8(EDID_LEN2, (sizeof(EDID_1080P25) >> 8) & 0xFF);
         // Re-enable EDID (E-DDC only, matching Linux driver)
         tc.writeReg8(EDID_MODE, MASK_EDID_MODE_E_DDC);
         delay(5);
@@ -416,15 +416,27 @@ static void masterSetup() {
     Serial.println(F("LTC timer SKIPPED (debug)"));
 #endif
 
-    // TC358743 via bit-bang probe (no Wire init needed — avoids I2C peripheral
-    // interfering with manual pin toggling)
+    // TC358743 probe via hardware I2C — try default address, then alternatives
+    Serial.printf("I2C: SDA=%d SCL=%d RST=%d\n",
+                  TC_I2C_SDA_PIN, TC_I2C_SCL_PIN, TC_RESET_PIN);
     tcPresent = tc.begin(TC_I2C_SDA_PIN, TC_I2C_SCL_PIN, TC_RESET_PIN);
     if (!tcPresent) {
+        // tc.begin() called Wire.end() on failure; reinit for further probes
         Wire.begin(TC_I2C_SDA_PIN, TC_I2C_SCL_PIN, 100000);
+        static const uint8_t altAddrs[] = { 0x0F, 0x1F, 0x3D };
+        for (int i = 0; i < 3; i++) {
+            if (altAddrs[i] == TC_I2C_ADDR) continue;
+            Wire.beginTransmission(altAddrs[i]);
+            if (Wire.endTransmission() == 0) {
+                Serial.printf("TC358743 found at alt address 0x%02X\n", altAddrs[i]);
+                tcPresent = true;
+                break;
+            }
+        }
     }
 
-    // I2C bus scan — hardware I2C (Wire must be initialised first)
-    Serial.print(F("I2C scan: "));
+    // Full I2C bus scan
+    Serial.print(F("I2C bus: "));
     int nFound = 0;
     for (uint8_t addr = 1; addr < 127; addr++) {
         Wire.beginTransmission(addr);
@@ -432,12 +444,18 @@ static void masterSetup() {
             if (nFound) Serial.print(F(", "));
             Serial.printf("0x%02X", addr);
             nFound++;
+            // Tag known devices
+            if (addr == 0x0F) Serial.print(F("(TC358743)"));
+            else if (addr == 0x1F) Serial.print(F("(TC358743?)"));
+            else if (addr == 0x3C) Serial.print(F("(OLED)"));
+            else if (addr == 0x3D) Serial.print(F("(TC358743?)"));
+            else if (addr == 0x68) Serial.print(F("(DS3231)"));
         }
     }
-    if (nFound == 0) Serial.print(F("(none)"));
+    if (nFound == 0) Serial.print(F("(none) — I2C bus not working or no devices"));
     Serial.println();
     if (!tcPresent) {
-        Serial.println(F("ERROR: TC358743 not responding — HDMI functions disabled."));
+        Serial.println(F("ERROR: TC358743 not responding — HDMI disabled."));
     } else {
         Serial.println(F("TC358743 detected OK."));
     }
@@ -754,6 +772,9 @@ static void slaveLoop() {
 #else
     mx7219.showTimecode(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
 #endif
+#if BLE_CLAP
+    mx7219.setBleConnected(bleTimecodeConnected());
+#endif
 #endif
 
 #if WEBUI_ENABLE
@@ -769,6 +790,7 @@ static void slaveLoop() {
 // ===========================================================================
 void setup() {
     Serial.begin(115200);
+    pinMode(LTC_OUT_PIN, OUTPUT);
     delay(2000);
     printResetReason();
 
@@ -789,7 +811,7 @@ void setup() {
     static char apSsid[33];
     {
         Preferences blePrefs;
-        blePrefs.begin("ble", true);
+        blePrefs.begin("ble", false);
         uint8_t mac[6] = {};
         esp_efuse_mac_get_default(mac);
         char macSuffix[8];

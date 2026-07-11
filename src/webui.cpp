@@ -1208,7 +1208,7 @@ html,body{
   });
 
   // ── OLED toggle ──
-  if(oledToggle) oledToggle.addEventListener('change',function(){
+  if(typeof oledToggle !== 'undefined') oledToggle.addEventListener('change',function(){
     var en=this.checked?1:0;
     oledLabel.textContent=this.checked?'On':'Off';
     var x=new XMLHttpRequest();
@@ -1218,7 +1218,7 @@ html,body{
   });
 
   // ── LTC Out toggle ──
-  if(ltcToggle) ltcToggle.addEventListener('change',function(){
+  if(typeof ltcToggle !== 'undefined') ltcToggle.addEventListener('change',function(){
     var en=this.checked?1:0;
     ltcLabel.textContent=this.checked?'On':'Off';
     var x=new XMLHttpRequest();
@@ -1341,8 +1341,8 @@ function wifiForget(){
     html += String(F(R"rawliteral(
 // ===== BLE functions =====
 function bleSetName(){
-  var el=document.getElementById('ble-name-input');
-  var msgEl=document.getElementById('ble-msg-master');
+  var el=document.getElementById('ble-name-input')||document.getElementById('ble-slave-name-input');
+  var msgEl=document.getElementById('ble-msg-master')||document.getElementById('ble-msg-slave');
   var n=el?el.value:'';
   if(!n)return;
   var x=new XMLHttpRequest();
@@ -1455,6 +1455,7 @@ function bleSelect(addr){
 
 function pollBleSlave(){
   var el=document.getElementById('ble-status');
+  var nameEl=document.getElementById('ble-slave-name-input');
   if(!el)return;
   var x=new XMLHttpRequest();
   x.open('GET','/api/ble',true);
@@ -1462,6 +1463,7 @@ function pollBleSlave(){
     if(x.status!=200)return;
     try{var d=JSON.parse(x.responseText);
     el.textContent=d.connected?'Connected ('+d.connected_name+')':'Disconnected';
+    if(nameEl&&d.name)nameEl.value=d.name;
     }catch(e){}
   };
   x.send();
@@ -1475,21 +1477,8 @@ function pollBleSlave(){
   html += F("setInterval(pollBleSlave,3000);\n");
 #endif
 html += String(F(R"rawliteral(
-// Load initial BLE name
-(function(){
-  var x=new XMLHttpRequest();
-  x.open('GET','/api/ble',true);
-  x.onload=function(){
-    if(x.status!=200)return;
-    try{var d=JSON.parse(x.responseText);
-    var el1=document.getElementById('ble-name-input');
-    if(el1)el1.value=d.name;
-    var el2=document.getElementById('ble-slave-name-input');
-    if(el2)el2.value=d.name;
-    }catch(e){}
-  };
-  x.send();
-})();
+// Load initial BLE name and status
+pollBleSlave();
 )rawliteral"));
 
     // Part 5: closing tags

@@ -91,6 +91,19 @@ void Max7219Display::showTimecode(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss
     _mx.update();
 }
 
+void Max7219Display::setBleConnected(bool en) {
+    _bleConnected = en;
+    _applyBleIndicator();
+}
+
+void Max7219Display::_applyBleIndicator() {
+    if (_bleConnected) {
+        _mx.setColumn(0, _mx.getColumn(0) | 0xC0);
+        _mx.setColumn(1, _mx.getColumn(1) | 0x80);
+    }
+    _mx.update();
+}
+
 void Max7219Display::showText(const char *text) {
     uint8_t len = 0;
     while (text[len]) len++;
