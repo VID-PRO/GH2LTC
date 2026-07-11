@@ -53,10 +53,10 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 
 #### I2C Bus (shared — single peripheral)
 
-| Signal | Master GPIO | Slave GPIO | Device |
-|--------|-------------|------------|--------|
-| SDA | TBD (CSI connector) | 4 | TC358743 `0x0F` + OLED `0x3C` + DS3231 `0x68` |
-| SCL | TBD (CSI connector) | 5 | shared |
+| Signal | Master GPIO (CSI) | Slave GPIO | Device |
+|--------|-------------------|------------|--------|
+| SDA | 7 | 4 | TC358743 `0x0F` + OLED `0x3C` + DS3231 `0x68` |
+| SCL | 8 | 5 | shared |
 
 #### MAX7219 LED Matrix (software SPI)
 
