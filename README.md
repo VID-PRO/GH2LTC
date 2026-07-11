@@ -1,6 +1,6 @@
 # [VID-PRO](https://www.vid-prot.de) GH2LTC
 
-Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-12M LTC audio. Split into two PlatformIO environments: **master** (Waveshare ESP32-P4-WIFI6, HDMI receiver, BLE server) and **slave** (ESP32-C3 Super Mini, BLE client, standalone LTC output).
+Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-12M LTC audio. Three PlatformIO environments: **master** (Waveshare ESP32-P4-WIFI6, HDMI receiver, BLE server), **slave** (ESP32-C3 Super Mini, BLE client, standalone LTC output), and **clap** (ESP32-C3, BLE client, LED matrix only).
 
 ---
 
@@ -17,7 +17,7 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 | **Web UI** | Fullscreen dark-teal SPA: timecode display, Auto/fixed FPS config, jam sync, brightness slider, matrix on/off, WiFi config |
 | **WiFi** | AP on boot; auto-STA connect to saved network; AP re-enables on disconnect |
 | **Reverse-engineer mode** | Dumps InfoFrame packets over serial to find GH5's exact timecode byte layout |
-| **BLE wireless sync** | Master advertises timecode via BLE notify; slave scans by service UUID, subscribes to notifications, runs local LTC + displays |
+| **BLE wireless sync** | Master advertises timecode via BLE notify; slave/clap scan by service UUID, subscribe to notifications, run local LTC + display |
 
 ---
 
@@ -72,11 +72,11 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 |--------|------|
 | LTC_OUT | 6 |
 
-#### TC358743 Reset
+#### TC358743 Reset (not connected — rely on internal POR)
 
 | Signal | GPIO |
 |--------|------|
-| TC_RESET | 7 |
+| TC_RESET | -1 (unused) |
 
 ---
 
@@ -94,16 +94,20 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 
 | Env | Board | Role | BLE | Platform |
 |-----|-------|------|-----|----------|
-| `slave` | ESP32-C3 DevKitC-02 | BLE client, LTC output | ✓ (native C3) | `espressif32` |
-| `master` | ESP32-P4-WIFI6 | HDMI receiver, BLE server | via C6 coprocessor† | `pioarduino/platform-espressif32` (GitHub) |
+| `slave` | ESP32-C3 DevKitC-02 | BLE client, LTC + OLED + RTC | ✓ (native C3) | `espressif32` |
+| `clap` | ESP32-C3 Super Mini | BLE client, LED matrix only | ✓ (native C3) | `espressif32` |
+| `master` | ESP32-P4-WIFI6 | HDMI receiver, BLE server | via C6 coprocessor† (ESP-Hosted SDIO) | `pioarduino/platform-espressif32` (GitHub) |
 
-† ESP32-P4 has no native BLE controller. The Waveshare board includes an ESP32-C6 companion for WiFi/BLE. Master currently runs standalone without BLE.
+† ESP32-P4 has no native BLE controller. The Waveshare board's ESP32-C6 companion provides WiFi/BLE over SDIO via ESP-Hosted firmware (pre-flashed). All BLE code uses preprocessor guards (`SOC_BLE_SUPPORTED || CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE`) to compile correctly on P4.
 
 ### Building
 
 ```bash
-# Slave (ESP32-C3)
+# Slave (ESP32-C3, full I/O)
 pio run -e slave -t upload
+
+# Clap (ESP32-C3, LED matrix only)
+pio run -e clap -t upload
 
 # Master (ESP32-P4-WIFI6)
 pio run -e master -t upload
@@ -120,11 +124,12 @@ pio device monitor -b 115200
 platformio.ini
 src/config.h                   pin assignments, feature toggles (common base)
 src/config_slave.h             -include for slave env: defines BLE_SLAVE=1
+src/config_clap.h              -include for clap env: defines BLE_SLAVE=1, BLE_CLAP=1, disables OLED/RTC/FPS_AUTO_DETECT
 src/config_master.h            -include for master env: defines BLE_MASTER=1
 src/main.cpp                   compile-time dispatch: #if BLE_MASTER / #else master/slave paths
 src/webui.{h,cpp}              WiFi AP/STA, HTTP server, NVS, embedded JS/CSS/HTML
-src/ble_timecode.{h,cpp}       BLE master (server/advertise/notify) & slave (scan/select/connect/subscribe)
-src/ble_timecode_stub.cpp      empty stubs for master build (P4 has no native BLE)
+src/ble_timecode.{h,cpp}       BLE master (server/advertise/notify) & slave (scan/select/connect/subscribe). Handles both Bluedroid (C3) and NimBLE (P4 via ESP-Hosted) callback signatures.
+src/ble_timecode_stub.cpp      unused (excluded via build_src_filter in all envs)
 src/ltc_encoder.{h,cpp}        esp_timer-based SMPTE-12M LTC generator
 src/max7219_display.{h,cpp}    MAX7219 64×8 framebuffer driver
 src/panasonic_tc.h             <-- fill in your GH5 timecode byte layout here
@@ -140,7 +145,7 @@ src/logo_data.h                PROGMEM byte array for logo.png
 
 | Scenario | Behavior |
 |----------|----------|
-| No WiFi configured | Opens AP with default SSID (master: `GH2LTC_XXXX`, slave: `TC-SLAVE-XXXX`), open network, `192.168.4.1` |
+| No WiFi configured | Opens AP with default SSID (master: `GH2LTC_XXXX`, slave: `TC-SLAVE-XXXX`, clap: `TC-CLAP-XXXX`), open network, `192.168.4.1` |
 | Saved credentials exist | Connects as STA on boot; AP auto-disables on connect |
 | STA disconnected >5 s | AP re-enabled for reconfiguration |
 
@@ -159,25 +164,26 @@ Open `http://192.168.4.1` (AP mode) or the ESP's STA IP. The header displays a c
 | **Matrix toggle** | Enable/disable LED matrix display at runtime, saved to NVS |
 | **WiFi config** | SSID/password input, saved to NVS, forget option |
 | **BLE (master)** | Change broadcast name, view connected slave count, disconnect all |
-| **BLE (slave)** | Scan for master devices (name + address), tap to connect, view connected master name |
+| **BLE (slave/clap)** | Scan for master devices (name + address), tap to connect, view connected master name, BLE connection indicator (bottom-left dots) on LED matrix |
 
 ---
 
 ## Configuration Defaults
 
-| Setting | Master (HDMI + BLE server) | Slave (BLE client, no HDMI) |
-|---------|---------------------------|-----------------------------|
-| WiFi AP SSID | `GH2LTC_` + last 4 MAC digits | `TC-SLAVE-` + last 4 MAC digits |
-| FPS | Auto (re-detect) | 25 |
-| Drop frame | Off | Off |
-| RTC | Optional (DS3231) | Optional (DS3231) |
-| OLED | Optional (SSD1306) | Optional (SSD1306) |
-| MAX7219 matrix | Enabled by default | Enabled by default |
-| Matrix brightness | 4 (0–15) | 4 |
-| LTC output pin | GPIO6 | GPIO6 |
-| TC_RESET_PIN | GPIO7 | GPIO7 |
-| Reverse-engineer mode | 0 | 0 |
-| BLE role | Master (advertise + notify) | Slave (scan + subscribe) |
+| Setting | Master (HDMI + BLE server) | Slave (BLE client, no HDMI) | Clap (LED matrix only) |
+|---------|---------------------------|-----------------------------|------------------------|
+| WiFi AP SSID | `GH2LTC_` + last 4 MAC digits | `TC-SLAVE-` + last 4 MAC digits | `TC-CLAP-` + last 4 MAC digits |
+| FPS | Auto (re-detect) | 25 | 25 |
+| Drop frame | Off | Off | Off |
+| RTC | Optional (DS3231) | Optional (DS3231) | Disabled |
+| OLED | Optional (SSD1306) | Optional (SSD1306) | Disabled |
+| MAX7219 matrix | Enabled by default | Enabled by default | Enabled by default |
+| Matrix brightness | 4 (0–15) | 4 | 4 |
+| BLE indicator (matrix) | — | — | 3-pixel dot (bottom-left) when connected |
+| LTC output pin | GPIO6 | GPIO6 | GPIO6 |
+| TC_RESET_PIN | -1 (unused) | — | — |
+| Reverse-engineer mode | 0 | 0 | 0 |
+| BLE role | Master (advertise + notify) | Slave (scan + subscribe) | Slave (scan + subscribe) |
 
 ---
 
@@ -188,7 +194,7 @@ A custom 128-bit BLE service (`9a6f0001-...`) transfers timecode from master to 
 - **Master**: advertises the service, sends a notification on every frame tick via `bleTimecodeUpdate()`. Broadcast name configurable via web UI; disconnect button removes all connected slaves.
 - **Slave**: scans for devices offering the service (showing name + address), taps one to connect. On receiving a timecode packet it jams the local `LtcEncoder` in real time. The web UI displays the connected master's device name.
 
-The slave runs its own independent LTC generator, MAX7219 matrix, and web UI.
+The slave/clap run their own independent LTC generator, MAX7219 matrix display (clap shows 3-pixel BLE indicator at bottom-left when connected), and web UI.
 
 ---
 
@@ -217,6 +223,8 @@ The TC358743 only supports HDMI 1.4 up to 1080p. Set the GH5's "HDMI Rec Output"
 **CHIPID reads 0x0000** — the chip responds to I2C but doesn't identify as a genuine TC358743 (expected 0x44XX). Many breakout boards sold on AliExpress/Amazon are counterfeits or damaged. If you also see DDC5V toggling between 0→1 every 50ms and TMDS never goes high, the board is defective. No software change can fix this — replace the board.
 
 **Test with a known-good HDMI source** (laptop, PC) before blaming the GH5. If both produce `TMDS=0`, the TC358743 breakout board is the problem, not the camera.
+
+**WebUI JS crashes on clap** — if the config drawer shows `—` for BLE status and the name input stays empty, the browser may be loading a cached version of the page from before the JS `typeof` guard fix. Hard-refresh (Cmd+Shift+R) to load the updated script. The issue was a `ReferenceError` on `oledToggle`/`ltcToggle` (excluded by `#ifndef BLE_CLAP`) that propagated out of an IIFE and halted the entire `<script>` block before `pollBleSlave()` could register.
 
 ---
 
