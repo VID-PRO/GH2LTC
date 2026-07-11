@@ -86,33 +86,44 @@ bool TC358743::begin(int sda_pin, int scl_pin, int reset_pin) {
 
     // ------ Linux driver `tc358743_initial_setup` equivalent ------
 
+    // Reset IR and CEC blocks (SYSCTL is at 0x0002, 16-bit)
+    modifyReg16(SYSCTL, MASK_IRRST | MASK_CECRST, MASK_IRRST | MASK_CECRST);
+
+    // Pulse TX and HDMI reset (assert then deassert)
+    pulseReg16(SYSCTL, MASK_CTXRST | MASK_HDMIRST);
+
+    // Wake from sleep mode
+    modifyReg16(SYSCTL, MASK_SLEEP, 0);
+
     // FIFO level (Linux driver: pdata->fifo_level, default = 374)
     writeReg16(FIFOCTL, 374);
 
-    // Set ref clock — assume 27 MHz (most common on TC358743 breakout boards).
-    // Linux driver: sys_freq = refclk_hz / 10000
-    const uint32_t REFCLK_HZ = 27000000;
-    uint16_t sys_freq = REFCLK_HZ / 10000;  // 2700 = 0x0A8C
-    writeReg8(SYS_FREQ0, sys_freq & 0xFF);       // 0x8C
-    writeReg8(SYS_FREQ1, (sys_freq >> 8) & 0xFF); // 0x0A
+    // == Ref clock: 42 MHz (confirmed by chip's power-on defaults — SF=0x1068) ==
+    const uint32_t REFCLK_HZ = 42000000;
+    uint16_t sys_freq = REFCLK_HZ / 10000;  // 4200 = 0x1068
+    writeReg8(SYS_FREQ0, sys_freq & 0xFF);
+    writeReg8(SYS_FREQ1, (sys_freq >> 8) & 0xFF);
 
-    // PHY_CTL0 bit for sysclock indicator: 0 for 26/27 MHz, 1 for 42 MHz
-    writeReg8(PHY_CTL0, 0x00);
+    // PHY_CTL0: bit 0 = 1 for 42 MHz; preserve default bits 1+5 (clone default 0x22)
+    writeReg8(PHY_CTL0, 0x23);
 
-    // FH_MIN = refclk_hz / 100000 = 270
+    // CLKM_CTL: bit 0 = PLL_REF_FREQ — 0=27MHz, 1=26/42MHz (MISSING BEFORE!)
+    writeReg8(CLKM_CTL, 0x01);
+
+    // FH_MIN = refclk_hz / 100000 = 420
     uint16_t fh_min = REFCLK_HZ / 100000;
     writeReg8(FH_MIN0, fh_min & 0xFF);
     writeReg8(FH_MIN1, (fh_min >> 8) & 0xFF);
 
-    // FH_MAX = fh_min * 66 / 10 = 1782
+    // FH_MAX = fh_min * 66 / 10 = 2772 = 0x0AF4
     uint16_t fh_max = (fh_min * 66) / 10;
     writeReg8(FH_MAX0, fh_max & 0xFF);
     writeReg8(FH_MAX1, (fh_max >> 8) & 0xFF);
 
-    // NCO_F0_MOD: 0x01 for 27 MHz, 0x00 for 26/42 MHz
-    writeReg8(NCO_F0_MOD, 0x01);
+    // NCO_F0_MOD: 0x00 for 26/42 MHz, 0x01 for 27 MHz
+    writeReg8(NCO_F0_MOD, 0x00);
 
-    // LOCKDET_REF = refclk_hz / 100 = 270000
+    // LOCKDET_REF = refclk_hz / 100 = 420000 = 0x668A0
     uint32_t lockdet_ref = REFCLK_HZ / 100;
     writeReg8(LOCKDET_REF0, lockdet_ref & 0xFF);
     writeReg8(LOCKDET_REF1, (lockdet_ref >> 8) & 0xFF);
@@ -131,13 +142,19 @@ bool TC358743::begin(int sda_pin, int scl_pin, int reset_pin) {
     //           SET_FREQ_RANGE_MODE_CYCLES(1) = 0x00
     writeReg8(PHY_CTL1, 0x80);
 
-    // PHY_BIAS
-    writeReg8(PHY_BIAS, 0x40);
+    // SYS_CLK: clock divider = 1, no differential delay
+    writeReg8(SYS_CLK, 0x00);
 
-    // PHY_CSQ: cable SQ count level = 0x0A
-    writeReg8(PHY_CSQ, 0x0A);
+    // PHY_BIAS: bias current for TMDS receiver
+    writeReg8(PHY_BIAS, 0x50);
 
-    // AVM_CTL: Linux driver uses 45 for all refclk frequencies
+    // PHY_CSQ: signal-quality count threshold (lower = more sensitive)
+    writeReg8(PHY_CSQ, 0x02);
+
+    // PHY_RST: digital reset to latch new PHY config (MUST be set before AVM_CTL/PHY_EN)
+    writeReg8(PHY_RST, 0x01);
+
+    // AVM_CTL: Linux driver uses 45 for all refclk frequencies (42 MHz too)
     writeReg8(AVM_CTL, 45);
 
     // HDMI_DET: async 25ms detection delay
@@ -149,8 +166,8 @@ bool TC358743::begin(int sda_pin, int scl_pin, int reset_pin) {
     // Re-enable PHY
     writeReg8(PHY_EN, 0x01);
 
-    // ANA_CTL (analog control)
-    writeReg8(ANA_CTL, 0x23);
+    // ANA_CTL: normal PCSX mode + analog on
+    writeReg8(ANA_CTL, 0x33);
 
     // VI_MODE: all CE/IT formats detected as RGB full range in DVI mode
     writeReg8(VI_MODE, 0x00);
@@ -161,42 +178,67 @@ bool TC358743::begin(int sda_pin, int scl_pin, int reset_pin) {
     // VOUT_SET3: ext count
     writeReg8(VOUT_SET3, 0x08);  // MASK_VOUT_EXTCNT
 
+    // Read back and log all PHY/ref-clock values for comparison
+    {
+        Serial.print(F("Init: SF="));
+        Serial.print(readReg8(SYS_FREQ1) << 8 | readReg8(SYS_FREQ0), HEX);
+        Serial.print(F(" FH="));
+        Serial.print(readReg8(FH_MIN1) << 8 | readReg8(FH_MIN0), HEX);
+        Serial.print('-');
+        Serial.print(readReg8(FH_MAX1) << 8 | readReg8(FH_MAX0), HEX);
+        Serial.print(F(" LD="));
+        Serial.print((uint32_t)readReg8(LOCKDET_REF2) << 16 | 
+                     (uint32_t)readReg8(LOCKDET_REF1) << 8 | readReg8(LOCKDET_REF0), HEX);
+        Serial.print(F(" NCO=0x"));
+        Serial.print(readReg8(NCO_F0_MOD), HEX);
+        Serial.print(F(" PHYCTL0=0x"));
+        Serial.print(readReg8(PHY_CTL0), HEX);
+        Serial.print(F(" CLKM_CTL=0x"));
+        Serial.print(readReg8(CLKM_CTL), HEX);
+        Serial.print(F(" PHYCTL1=0x"));
+        Serial.print(readReg8(PHY_CTL1), HEX);
+        Serial.print(F(" BIAS=0x"));
+        Serial.print(readReg8(PHY_BIAS), HEX);
+        Serial.print(F(" CSQ=0x"));
+        Serial.print(readReg8(PHY_CSQ), HEX);
+        Serial.print(F(" AVM=0x"));
+        Serial.print(readReg8(AVM_CTL), HEX);
+        Serial.print(F(" PHY_EN=0x"));
+        Serial.print(readReg8(PHY_EN), HEX);
+        Serial.print(F(" ANA_CTL=0x"));
+        Serial.print(readReg8(ANA_CTL), HEX);
+        Serial.println();
+    }
+
     // ------ Write EDID (must be done BEFORE INIT_END, per TC358743 datasheet) ------
 
     // 1. Disable EDID access while writing
     writeReg8(EDID_MODE, 0x00);
     delay(5);
-
-    // 2. Write EDID data to chip RAM
     bool edidOk = writeEdidByteByByte(EDID_1080P25, sizeof(EDID_1080P25));
     Serial.print(F("EDID write: "));
     Serial.println(edidOk ? F("OK") : F("FAILED"));
 
-    // 3. EDID reshow / re-latch (per Linux driver edid_reshow)
+    // 2. EDID reshow / re-latch (per Linux driver edid_reshow)
     writeReg8(EDID_LEN1, 0x00);
     writeReg8(EDID_LEN2, 0x00);
     writeReg8(EDID_SEG_NUM, 0x00);
     writeReg8(EDID_LEN1, sizeof(EDID_1080P25) & 0xFF);
     writeReg8(EDID_LEN2, (sizeof(EDID_1080P25) >> 8) & 0xFF);
 
-    // 4. Re-enable EDID access (E-DDC, matching Linux driver)
+    // 3. Re-enable EDID access (E-DDC, matching Linux driver)
     writeReg8(EDID_MODE, MASK_EDID_MODE_E_DDC);
     delay(5);
 
     writeReg8(INIT_END, 0x01);
     delay(100);
 
-    // 5. Enable HPD after EDID and DDC are ready
+    // 4. Enable HPD
     writeReg8(HPD_CTL, 0x01);
     delay(150);
 
-    // 6. Toggle HDMI_RST to re-initialise the HDMI receiver state machine
-    writeReg8(SYS_CTRL, 0x00);
-    delay(10);
-    writeReg8(SYS_CTRL, MASK_SYS_CTRL_HDMI_RST);
-    delay(10);
-    writeReg8(SYS_CTRL, 0x00);
-    delay(200);
+    // 5. Configure CSI-2 TX (2 lanes, continuous clock)
+    configureCsiTx();
 
     return true;
 }
@@ -286,17 +328,104 @@ uint16_t TC358743::readReg16(uint16_t reg) {
 }
 
 void TC358743::readBlock(uint16_t reg, uint8_t *buf, size_t len) {
-    // Chip does NOT auto-increment during combined I2C read transactions.
-    // Read each byte individually via separate write-then-read sequences.
+    // Use repeated START (no STOP) between address write and data read,
+    // matching the Linux kernel driver's combined I2C transaction format.
+    // The TC358743 requires this for reliable 0x85xx register page access.
     for (size_t i = 0; i < len; i++) {
         _wire.beginTransmission(_addr);
         _wire.write((uint8_t)((reg + i) >> 8));
         _wire.write((uint8_t)((reg + i) & 0xFF));
-        _wire.endTransmission(true);
+        _wire.endTransmission(false);
         _wire.requestFrom((int)_addr, 1);
         if (_wire.available()) {
             buf[i] = (uint8_t)_wire.read();
         }
     }
+}
+
+void TC358743::writeReg32(uint16_t reg, uint32_t val) {
+    uint8_t buf[4] = {
+        (uint8_t)(val & 0xFF),
+        (uint8_t)((val >> 8) & 0xFF),
+        (uint8_t)((val >> 16) & 0xFF),
+        (uint8_t)((val >> 24) & 0xFF)
+    };
+    writeRegRaw(reg, buf, 4);
+}
+
+// -------------------------------------------------------------------
+// CSI-2 TX configuration
+// -------------------------------------------------------------------
+void TC358743::configureCsiTx() {
+    // Enable all clock/data lanes (clear lane-disable bits)
+    writeReg16(CLW_CNTRL, 0x0000);
+    writeReg16(D0W_CNTRL, 0x0000);
+    writeReg16(D1W_CNTRL, 0x0000);
+    // D2W_CNTRL / D3W_CNTRL unused for 2-lane, but enable them anyway
+    writeReg16(D2W_CNTRL, 0x0000);
+    writeReg16(D3W_CNTRL, 0x0000);
+
+    // Enable HS TX VREG for clock lane and data lanes 0-1
+    writeReg32(HSTXVREGEN,
+               MASK_CLM_HSTXVREGEN | MASK_D0M_HSTXVREGEN | MASK_D1M_HSTXVREGEN);
+
+    // Reset CSI configuration via CSI_CONFW
+    writeReg32(CSI_CONFW, MASK_MODE_CLEAR | MASK_ADDRESS_CSI_CONTROL | 0);
+
+    // Set CSI_CONTROL:
+    //   CSI_MODE – enable CSI block
+    //   TXHSMD   – HS transmit mode
+    //   HSCKMD   – HS clock mode
+    //   NOL_2    – 2 data lanes
+    //   EOTDIS   – disable EOT packet (some receivers need this)
+    writeReg32(CSI_CONFW,
+               MASK_MODE_SET | MASK_ADDRESS_CSI_CONTROL |
+               MASK_CSI_MODE | MASK_TXHSMD | MASK_HSCKMD |
+               MASK_NOL_2 | MASK_EOTDIS);
+
+    // Enable CSI interrupts (halt + error)
+    writeReg32(CSI_CONFW,
+               MASK_MODE_SET | MASK_ADDRESS_CSI_INT_ENA |
+               MASK_IENHLT | MASK_IENER);
+
+    // Set continuous clock mode for the D-PHY
+    writeReg32(TXOPTIONCNTRL, MASK_CONTCLKMODE);
+
+    // Start the D-PHY state machine
+    writeReg32(STARTCNTRL, MASK_START);
+
+    Serial.println(F("CSI-2 TX: 2 lanes, continuous clock, started"));
+}
+
+void TC358743::enableCsiStream(bool enable) {
+    if (enable) {
+        writeReg32(TXOPTIONCNTRL, 0);
+        writeReg32(TXOPTIONCNTRL, MASK_CONTCLKMODE);
+        writeReg8(VI_MUTE, MASK_AUTO_MUTE);
+        writeReg32(CSI_START, MASK_STRT);
+        Serial.println(F("CSI-2 TX: stream ON"));
+    } else {
+        writeReg8(VI_MUTE, MASK_AUTO_MUTE | MASK_VI_MUTE);
+        Serial.println(F("CSI-2 TX: stream OFF"));
+    }
+}
+
+void TC358743::pulseReg16(uint16_t reg, uint16_t mask) {
+    uint16_t val = readReg16(reg);
+    writeReg16(reg, val | mask);
+    writeReg16(reg, val & ~mask);
+}
+
+void TC358743::modifyReg16(uint16_t reg, uint16_t clearMask, uint16_t setMask) {
+    uint16_t val = readReg16(reg);
+    val &= ~clearMask;
+    val |= setMask;
+    writeReg16(reg, val);
+}
+
+void TC358743::reapplyPhy() {
+    writeReg8(PHY_BIAS, 0x50);
+    writeReg8(PHY_CSQ, 0x04);
+    Serial.println(F("PHY: re-applied (BIAS=0x50 CSQ=0x04)"));
 }
 

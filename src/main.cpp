@@ -168,30 +168,50 @@ void runReverseEngineerDump() {
     uint8_t hpd = tc.readReg8(HPD_CTL);
     uint8_t ddc = tc.readReg8(DDC_CTL);
 
-    // If TMDS stayed 0 for ~5s, re-write EDID + retry HPD
+    // If TMDS stayed 0 for ~120s, re-write EDID + retry HPD
     static unsigned long lastHpdRetry = 0;
     unsigned long now = millis();
-    if (!(st & 0x02) && (now - lastHpdRetry > 5000)) {
+    if (!(st & 0x02) && (now - lastHpdRetry > 120000)) {
         lastHpdRetry = now;
-        Serial.println(F("TMDS still 0 — re-writing EDID + retrying HPD..."));
-        tc.writeReg8(HPD_CTL, 0x00);   // HPD low
-        tc.writeReg8(EDID_MODE, 0x00); // disable EDID
+        Serial.println(F("TMDS still 0 — retrying (full re-apply + CLKM_CTL)..."));
+        tc.writeReg8(HPD_CTL, 0x00);
+        tc.writeReg8(EDID_MODE, 0x00);
         delay(50);
-        // Re-write EDID
+        tc.pulseReg16(SYSCTL, MASK_HDMIRST);
+        delay(200);
+        // Re-apply ref clock (42 MHz) + PHY config + EDID
+        tc.writeReg8(PHY_CTL0, 0x23);
+        tc.writeReg8(CLKM_CTL, 0x01);
+        tc.writeReg8(SYS_FREQ0, (42000000 / 10000) & 0xFF);
+        tc.writeReg8(SYS_FREQ1, ((42000000 / 10000) >> 8) & 0xFF);
+        tc.writeReg8(NCO_F0_MOD, 0x00);
+        tc.writeReg8(DDC_CTL, 0x02);
+        tc.writeReg8(PHY_EN, 0x00);
+        tc.writeReg8(PHY_CTL1, 0x80);
+        tc.writeReg8(SYS_CLK, 0x00);
+        tc.writeReg8(PHY_BIAS, 0x50);
+        tc.writeReg8(PHY_CSQ, 0x02);
+        tc.writeReg8(PHY_RST, 0x01);
+        tc.writeReg8(AVM_CTL, 45);
+        tc.writeReg8(HDMI_DET, 0x10);
+        tc.writeReg8(HV_RST, 0x00);
+        tc.writeReg8(PHY_EN, 0x01);
+        tc.writeReg8(ANA_CTL, 0x33);
+        tc.writeReg8(VI_MODE, 0x00);
+        tc.writeReg8(VOUT_SET2, 0x01);
+        tc.writeReg8(VOUT_SET3, 0x08);
+        // Re-write EDID + reshow
         tc.writeEdidByteByByte(EDID_1080P25, sizeof(EDID_1080P25));
         delay(10);
-        // EDID reshow (Linux driver sequence)
         tc.writeReg8(EDID_LEN1, 0x00);
         tc.writeReg8(EDID_LEN2, 0x00);
         tc.writeReg8(EDID_SEG_NUM, 0x00);
         tc.writeReg8(EDID_LEN1, sizeof(EDID_1080P25) & 0xFF);
         tc.writeReg8(EDID_LEN2, (sizeof(EDID_1080P25) >> 8) & 0xFF);
-        // Re-enable EDID (E-DDC only, matching Linux driver)
         tc.writeReg8(EDID_MODE, MASK_EDID_MODE_E_DDC);
+        tc.writeReg8(INIT_END, 0x01);
         delay(5);
-        // DDC debounce — 100ms (Linux driver default)
-        tc.writeReg8(DDC_CTL, 0x02);
-        // Assert HPD
+        delay(200);
         tc.writeReg8(HPD_CTL, 0x01);
         tc.writeReg16(SYS_INT, 0xFFFF);  // clear pending events
         // Poll SYS_STATUS + DDC address rapidly for 2 seconds
@@ -222,12 +242,6 @@ void runReverseEngineerDump() {
                 Serial.println(F("ms"));
             }
         }
-        delay(10);
-        tc.writeReg8(SYS_CTRL, 0x00);
-        delay(10);
-        tc.writeReg8(SYS_CTRL, MASK_SYS_CTRL_HDMI_RST);
-        delay(10);
-        tc.writeReg8(SYS_CTRL, 0x00);
         st = tc.readReg8(SYS_STATUS);
         Serial.print(F("After retry SYS_STATUS: 0x"));
         Serial.println(st, HEX);
@@ -243,6 +257,16 @@ void runReverseEngineerDump() {
     Serial.print(F(" HDCP="));  Serial.print((st >> 5) & 1);
     Serial.print(F(" MUTE="));  Serial.print((st >> 6) & 1);
     Serial.print(F(" SYNC="));  Serial.println((st >> 7) & 1);
+    // 0x85xx register write-read-back test
+    uint8_t testVal = tc.readReg8(SYS_CLK);
+    tc.writeReg8(SYS_CLK, 0xA5);
+    uint8_t testRead = tc.readReg8(SYS_CLK);
+    tc.writeReg8(SYS_CLK, testVal);  // restore
+    if (testRead != 0xA5) {
+        Serial.print(F("WARN: 0x85xx write/read mismatch! SYS_CLK: wrote 0xA5 got 0x"));
+        Serial.println(testRead, HEX);
+    }
+    uint8_t vi1 = tc.readReg8(VI_STATUS1);
     uint8_t vi3 = tc.readReg8(VI_STATUS3);
     uint8_t phyCsq = tc.readReg8(PHY_CSQ);
     uint16_t sysInt = tc.readReg16(SYS_INT);
@@ -252,13 +276,28 @@ void runReverseEngineerDump() {
     uint8_t sf0 = tc.readReg8(SYS_FREQ0);
     uint8_t sf1 = tc.readReg8(SYS_FREQ1);
     uint8_t nco = tc.readReg8(NCO_F0_MOD);
+    uint8_t fhMin0 = tc.readReg8(FH_MIN0);
+    uint8_t fhMin1 = tc.readReg8(FH_MIN1);
+    uint8_t fhMax0 = tc.readReg8(FH_MAX0);
+    uint8_t fhMax1 = tc.readReg8(FH_MAX1);
+    uint8_t ldet0 = tc.readReg8(LOCKDET_REF0);
+    uint8_t ldet1 = tc.readReg8(LOCKDET_REF1);
+    uint8_t ldet2 = tc.readReg8(LOCKDET_REF2);
+    uint8_t phyCtl0 = tc.readReg8(PHY_CTL0);
+    uint16_t sysctl = tc.readReg16(SYSCTL);
     Serial.print(F("HPD_CTL: 0x")); Serial.print(hpd, HEX);
     Serial.print(F(" DDC_CTL: 0x")); Serial.print(ddc, HEX);
     Serial.print(F(" PHY_CSQ: 0x")); Serial.print(phyCsq, HEX);
+    Serial.print(F(" VI_STAT1: 0x")); Serial.print(vi1, HEX);
     Serial.print(F(" VI_STAT3: 0x")); Serial.print(vi3, HEX);
     Serial.print(F(" SYS_INT: 0x")); Serial.print(sysInt, HEX);
     Serial.print(F(" SF:0x")); Serial.print(sf1, HEX); Serial.print(sf0, HEX);
+    Serial.print(F(" FH:")); Serial.print(fhMin1, HEX); Serial.print(fhMin0, HEX);
+    Serial.print(F("-")); Serial.print(fhMax1, HEX); Serial.print(fhMax0, HEX);
+    Serial.print(F(" LD:")); Serial.print(ldet2, HEX); Serial.print(ldet1, HEX); Serial.print(ldet0, HEX);
     Serial.print(F(" NCO:0x")); Serial.print(nco, HEX);
+    Serial.print(F(" PHYCTL0:0x")); Serial.print(phyCtl0, HEX);
+    Serial.print(F(" SYSCTL:0x")); Serial.print(sysctl, HEX);
     uint8_t edidSegNum = tc.readReg8(EDID_SEG_NUM);
     Serial.print(F(" EDID_SEG: 0x")); Serial.print(edidSeg, HEX);
     Serial.print(F(" EDID_SEG_NUM: 0x")); Serial.print(edidSegNum, HEX);
@@ -612,6 +651,12 @@ static void masterLoop() {
 
         bool hdmiOk = locked && tcPresent && tc.isHdmiMode();
 
+        static bool prevHdmiOk = false;
+        if (hdmiOk != prevHdmiOk) {
+            tc.enableCsiStream(hdmiOk);
+            prevHdmiOk = hdmiOk;
+        }
+
         uint16_t frames = ltc.framesCompleted();
         bool frameDone = hdmiOk || (frames > 0);
         if (!hdmiOk && frameDone) {
@@ -715,6 +760,7 @@ static void slaveSetup() {
 
 #if MAX7219_ENABLE
     mx7219.begin();
+    mx7219.setIntensity(webui.brightness());
     if (webui.matrixEnabled()) {
 #if BLE_CLAP
         mx7219.showText("CLAP");
