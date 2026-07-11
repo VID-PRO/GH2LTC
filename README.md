@@ -123,20 +123,18 @@ pio device monitor -b 115200
 ```
 platformio.ini
 src/config.h                   pin assignments, feature toggles (common base)
-src/config_slave.h             -include for slave env: defines BLE_SLAVE=1
-src/config_clap.h              -include for clap env: defines BLE_SLAVE=1, BLE_CLAP=1, disables OLED/RTC/FPS_AUTO_DETECT
-src/config_master.h            -include for master env: defines BLE_MASTER=1
-src/main.cpp                   compile-time dispatch: #if BLE_MASTER / #else master/slave paths
-src/webui.{h,cpp}              WiFi AP/STA, HTTP server, NVS, embedded JS/CSS/HTML
-src/ble_timecode.{h,cpp}       BLE master (server/advertise/notify) & slave (scan/select/connect/subscribe). Handles both Bluedroid (C3) and NimBLE (P4 via ESP-Hosted) callback signatures.
-src/ble_timecode_stub.cpp      unused (excluded via build_src_filter in all envs)
-src/ltc_encoder.{h,cpp}        esp_timer-based SMPTE-12M LTC generator
-src/max7219_display.{h,cpp}    MAX7219 64×8 framebuffer driver
-src/panasonic_tc.h             <-- fill in your GH5 timecode byte layout here
-src/tc358743.{h,cpp}           minimal I2C driver + bitBangProbe()
-src/oled_display.{h,cpp}       optional SSD1306 via U8g2
-src/ds3231.{h,cpp}             optional RTC driver
+src/config_slave.h             -include for slave env
+src/config_clap.h              -include for clap env
+src/config_master.h            -include for master env
+src/main.cpp                   compile-time dispatch: master/slave paths
 src/logo_data.h                PROGMEM byte array for logo.png
+src/webui/                     WiFi AP/STA, HTTP server, NVS, embedded JS/CSS/HTML
+src/hdmi/                      TC358743 I2C driver + register map + GH5 timecode decoder
+src/ltc/                       esp_timer-based SMPTE-12M LTC generator
+src/matrix/                    MAX7219 64×8 framebuffer driver
+src/oled/                      optional SSD1306 via U8g2
+src/rtc/                       optional DS3231 RTC driver
+src/timecode/                  BLE master (advertise/notify) & slave (scan/select/connect/subscribe)
 ```
 
 ---
@@ -200,7 +198,7 @@ The slave/clap run their own independent LTC generator, MAX7219 matrix display (
 
 ## Step 1: Reverse-engineer GH5 timecode bytes
 
-Set `REVERSE_ENGINEER_MODE 1` in `src/config.h`. Connect the GH5 via HDMI, open serial monitor, set the GH5's timecode to a known value, then diff the InfoFrame dumps as time advances to find which bytes change. Fill in `decodeGh5Timecode()` in `src/panasonic_tc.h`, then set `REVERSE_ENGINEER_MODE 0`.
+Set `REVERSE_ENGINEER_MODE 1` in `src/config.h`. Connect the GH5 via HDMI, open serial monitor, set the GH5's timecode to a known value, then diff the InfoFrame dumps as time advances to find which bytes change. Fill in `decodeGh5Timecode()` in `src/hdmi/panasonic_tc.h`, then set `REVERSE_ENGINEER_MODE 0`.
 
 When no HDMI source is detected (`TMDS=0`) the system free-runs, generating LTC from its internal timer starting at 01:00:00:00 (or RTC if fitted). It auto-switches between HDMI and free-run as sources are connected/disconnected.
 
