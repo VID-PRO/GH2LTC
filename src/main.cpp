@@ -708,6 +708,7 @@ static void masterLoop() {
         if (webui.matrixEnabled()) {
             mx7219.showTimecode(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
         }
+        mx7219.setBleConnected(bleTimecodeConnectedCount() > 0);
 #endif
         bleTimecodeUpdate(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
 

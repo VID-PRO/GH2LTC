@@ -176,7 +176,7 @@ Open `http://192.168.4.1` (AP mode) or the ESP's STA IP. The header displays a c
 | OLED | Optional (SSD1306) | Optional (SSD1306) | Disabled |
 | MAX7219 matrix | Off by default | Off by default | Enabled by default |
 | Matrix brightness | 4 (0–15) | 4 | 4 |
-| BLE indicator (matrix) | — | 3-pixel dot (bottom-left) when connected | 3-pixel dot (bottom-left) when connected |
+| BLE indicator (matrix) | 3-pixel dot (bottom-left) when slaves connected | 3-pixel dot (bottom-left) when connected | 3-pixel dot (bottom-left) when connected |
 | LTC output pin | GPIO6 | GPIO6 | GPIO6 |
 | TC_RESET_PIN | -1 (unused) | — | — |
 | Reverse-engineer mode | 0 (set to 1 in `config_master.h`) | — | — |
