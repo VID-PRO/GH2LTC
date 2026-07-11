@@ -5,23 +5,23 @@
 #include <esp_efuse.h>
 #include <esp_mac.h>
 #include "config.h"
-#include "tc358743.h"
-#include "tc358743_regs.h"
-#include "ltc_encoder.h"
-#include "panasonic_tc.h"
+#include "hdmi/tc358743.h"
+#include "hdmi/tc358743_regs.h"
+#include "ltc/ltc_encoder.h"
+#include "hdmi/panasonic_tc.h"
 #if RTC_ENABLE
-#include "ds3231.h"
+#include "rtc/ds3231.h"
 #endif
 #if OLED_ENABLE
-#include "oled_display.h"
+#include "oled/oled_display.h"
 #endif
 #if MAX7219_ENABLE
-#include "max7219_display.h"
+#include "matrix/max7219_display.h"
 #endif
 #if WEBUI_ENABLE
-#include "webui.h"
+#include "webui/webui.h"
 #endif
-#include "ble_timecode.h"
+#include "timecode/ble_timecode.h"
 
 // ---------------------------------------------------------------------------
 // Master-specific globals

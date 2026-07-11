@@ -2,7 +2,7 @@
 #if !defined(BLE_SLAVE) || defined(BLE_MODE_RUNTIME)
 #include "logo_data.h"
 #endif
-#include "ble_timecode.h"
+#include "../timecode/ble_timecode.h"
 
 WebUI::WebUI() : _server(80) {
     _apSsid[0] = '\0';
