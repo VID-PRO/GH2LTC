@@ -396,7 +396,9 @@ static void printConfig() {
     Serial.print(F("  LTC_DROP_FRAME    ")); Serial.println(LTC_DROP_FRAME);
 #endif
     Serial.print(F("  FPS_AUTO_DETECT   ")); Serial.println(FPS_AUTO_DETECT);
+#ifdef REVERSE_ENGINEER_MODE
     Serial.print(F("  REVERSE_ENGINEER  ")); Serial.println(REVERSE_ENGINEER_MODE);
+#endif
 #if BLE_MASTER
     Serial.print(F("  TC358743 I2C      SDA=")); Serial.print(TC_I2C_SDA_PIN);
     Serial.print(F(" SCL=")); Serial.print(TC_I2C_SCL_PIN);

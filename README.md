@@ -179,7 +179,7 @@ Open `http://192.168.4.1` (AP mode) or the ESP's STA IP. The header displays a c
 | BLE indicator (matrix) | — | 3-pixel dot (bottom-left) when connected | 3-pixel dot (bottom-left) when connected |
 | LTC output pin | GPIO6 | GPIO6 | GPIO6 |
 | TC_RESET_PIN | -1 (unused) | — | — |
-| Reverse-engineer mode | 0 | 0 | 0 |
+| Reverse-engineer mode | 0 (set to 1 in `config_master.h`) | — | — |
 | BLE role | Master (advertise + notify) | Slave (scan + subscribe) | Slave (scan + subscribe) |
 
 † Relies on HDMI frame-sync on master; no-op on slave/clap (falls back to configured FPS).

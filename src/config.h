@@ -79,6 +79,5 @@
 #define WEBUI_STA_PASSWORD  ""
 
 // ---------------------------------------------------------------------------
-// Operating mode
+// Operating mode (master only — see config_master.h)
 // ---------------------------------------------------------------------------
-#define REVERSE_ENGINEER_MODE 0
