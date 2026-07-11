@@ -890,7 +890,7 @@ html,body{
     <span class="status-dot hdmi" id="status-dot"></span>
     <span id="source-label">HDMI</span>
   </div>
-  <a class="header-brand" href="https://www.vid-prot.de" target="_blank" rel="noopener">VID-PRO</a>
+  <a class="header-brand" href="https://www.vid-pro.de" target="_blank" rel="noopener">VID-PRO</a>
   <div class="header-right">
     <span class="fps-badge" id="fps-badge">25 fps</span>
   </div>

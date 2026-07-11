@@ -1,4 +1,4 @@
-# [VID-PRO](https://www.vid-prot.de) GH2LTC
+# [VID-PRO](https://www.vid-pro.de) GH2LTC
 
 Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-12M LTC audio. Three PlatformIO environments: **master** (Waveshare ESP32-P4-WIFI6, HDMI receiver, BLE server), **slave** (ESP32-C3 Super Mini, BLE client, standalone LTC output), and **clap** (ESP32-C3, BLE client, LED matrix only).
 
