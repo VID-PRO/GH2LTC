@@ -142,7 +142,7 @@ src/timecode/                  BLE master (advertise/notify) & slave (scan/selec
 
 | Scenario | Behavior |
 |----------|----------|
-| No WiFi configured | Opens AP with default SSID (master: `GH2LTC_XXXX`, slave: `TC-SLAVE-XXXX`, clap: `TC-CLAP-XXXX`), open network, `192.168.4.1` |
+| No WiFi configured | Opens AP with default SSID (master: `TC-MASTER-XXXX`, slave: `TC-SLAVE-XXXX`, clap: `TC-CLAP-XXXX`), open network, `192.168.4.1` |
 | Saved credentials exist | Connects as STA on boot; AP auto-disables on connect |
 | STA disconnected >5 s | AP re-enabled for reconfiguration |
 
@@ -169,7 +169,7 @@ Open `http://192.168.4.1` (AP mode) or the ESP's STA IP. The header displays a c
 
 | Setting | Master (HDMI + BLE server) | Slave (BLE client, no HDMI) | Clap (LED matrix only) |
 |---------|---------------------------|-----------------------------|------------------------|
-| WiFi AP SSID | `GH2LTC_` + last 4 MAC digits | `TC-SLAVE-` + last 4 MAC digits | `TC-CLAP-` + last 4 MAC digits |
+| WiFi AP SSID | `TC-MASTER-` + last 4 MAC digits | `TC-SLAVE-` + last 4 MAC digits | `TC-CLAP-` + last 4 MAC digits |
 | FPS | Auto (re-detect) | Auto (re-detect†) | Auto (re-detect†) |
 | Drop frame | Off | Off | Off |
 | RTC | Optional (DS3231) | Optional (DS3231) | Optional (DS3231) |

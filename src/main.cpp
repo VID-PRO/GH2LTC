@@ -874,7 +874,7 @@ void setup() {
 #elif BLE_MASTER
         String bleName = blePrefs.getString("name", "TC-LTC-MASTER");
         if (bleName == "TC-LTC-MASTER") {
-            snprintf(apSsid, sizeof(apSsid), "GH2LTC_%s", macSuffix);
+            snprintf(apSsid, sizeof(apSsid), "TC-MASTER-%s", macSuffix);
         } else {
             strncpy(apSsid, bleName.c_str(), sizeof(apSsid) - 1);
             apSsid[sizeof(apSsid) - 1] = '\0';
