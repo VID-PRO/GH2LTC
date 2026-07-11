@@ -150,7 +150,7 @@ src/timecode/                  BLE master (advertise/notify) & slave (scan/selec
 
 ## Web Interface
 
-Open `http://192.168.4.1` (AP mode) or the ESP's STA IP. The header displays a centered **VID-PRO** link (https://www.vid-prot.de).
+Open `http://192.168.4.1` (AP mode) or the ESP's STA IP. The header displays a centered **VID-PRO** link (https://www.vid-pro.de).
 
 | Feature | Description |
 |---------|-------------|
