@@ -469,13 +469,11 @@ static void menuBuildItems() {
 // Battery voltage
 // ---------------------------------------------------------------------------
 #if BAT_ADC_PIN >= 0
+static void initBatteryAdc() {
+    analogReadResolution(12);
+    analogSetPinAttenuation(BAT_ADC_PIN, ADC_11db);
+}
 static uint8_t readBatteryPct() {
-    static bool adcInit = false;
-    if (!adcInit) {
-        analogReadResolution(12);
-        analogSetPinAttenuation(BAT_ADC_PIN, ADC_11db);
-        adcInit = true;
-    }
     static unsigned long lastRead = 0;
     static uint8_t cached = 255;
     unsigned long now = millis();
@@ -491,6 +489,7 @@ static uint8_t readBatteryPct() {
     return cached;
 }
 #else
+static void initBatteryAdc() {}
 static uint8_t readBatteryPct() { return 255; }
 #endif
 
@@ -1020,7 +1019,7 @@ static void ltcLoop() {
 #if OLED_ENABLE
         if (webui.oledEnabled()) {
             fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
-            oled.update(tcStr, ltc.fps(), ltcDecoder.locked(), gDeviceName, webui.autoFps(), "IN", 0, readBatteryPct(), 'L');
+            oled.update(tcStr, ltc.fps(), ltcDecoder.locked(), gDeviceName, webui.autoFps(), "IN", 0, readBatteryPct(), ltcDecoder.locked() ? 'L' : 'F');
         }
 #if defined(TCWL_LTC) && BTN_UP_PIN >= 0
         if (menu.active() && webui.oledEnabled()) {
@@ -1102,6 +1101,7 @@ void setup() {
     pinMode(LTC_OUT_PIN, OUTPUT);
     delay(2000);
     printResetReason();
+    initBatteryAdc();
 
     Serial.print(F("TC-WL starting in "));
 #if TCWL_CLAP
