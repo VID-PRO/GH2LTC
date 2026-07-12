@@ -78,6 +78,19 @@
 #define MAX7219_NUM_MODULES  8
 
 // ---------------------------------------------------------------------------
+// Battery voltage monitoring (ADC, 1/2 resistor divider on A0)
+// BAT_ADC_PIN = -1 to disable; set to ADC-capable GPIO otherwise.
+// BAT_DIVIDER = voltage divider ratio (e.g. 2.0 for 200k:200k).
+// ---------------------------------------------------------------------------
+#ifndef BAT_ADC_PIN
+#define BAT_ADC_PIN           -1
+#endif
+#define BAT_DIVIDER           2.0f
+#ifndef BAT_FULL_RUNTIME_MIN
+#define BAT_FULL_RUNTIME_MIN  600           // estimated runtime (min) at 100%
+#endif
+
+// ---------------------------------------------------------------------------
 // Web UI (WiFi AP + optional STA) configuration
 // ---------------------------------------------------------------------------
 #define WEBUI_ENABLE        1

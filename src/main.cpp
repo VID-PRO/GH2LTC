@@ -47,6 +47,7 @@ static void fmtTcStr(uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff) {
 
 #if OLED_ENABLE
 static OledDisplay oled;
+static char gDeviceName[33] = "";
 
 #if OLED_ENABLE && !defined(TCWL_CLAP)
 static Button btnUp(BTN_UP_PIN);
@@ -465,6 +466,35 @@ static void menuBuildItems() {
 #endif
 
 // ---------------------------------------------------------------------------
+// Battery voltage
+// ---------------------------------------------------------------------------
+#if BAT_ADC_PIN >= 0
+static uint8_t readBatteryPct() {
+    static bool adcInit = false;
+    if (!adcInit) {
+        analogReadResolution(12);
+        analogSetPinAttenuation(BAT_ADC_PIN, ADC_11db);
+        adcInit = true;
+    }
+    static unsigned long lastRead = 0;
+    static uint8_t cached = 255;
+    unsigned long now = millis();
+    if (now - lastRead > 10000) {
+        lastRead = now;
+        int raw = analogRead(BAT_ADC_PIN);
+        float vBat = raw * 3.3f / 4095.0f * BAT_DIVIDER;
+        float pct = (vBat - 3.3f) / (4.2f - 3.3f) * 100.0f;
+        if (pct < 0.0f) pct = 0.0f;
+        if (pct > 100.0f) pct = 100.0f;
+        cached = (uint8_t)pct;
+    }
+    return cached;
+}
+#else
+static uint8_t readBatteryPct() { return 255; }
+#endif
+
+// ---------------------------------------------------------------------------
 // Common: print reset reason
 // ---------------------------------------------------------------------------
 static void printResetReason() {
@@ -840,7 +870,7 @@ static void hdmiLoop() {
 #if OLED_ENABLE
         if (webui.oledEnabled()) {
             fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
-            oled.update(tcStr, ltc.fps(), hdmiOk, "HDMI", tcSource, bleTimecodeConnectedCount());
+            oled.update(tcStr, ltc.fps(), hdmiOk, gDeviceName, webui.autoFps(), "OUT", 0, readBatteryPct(), 'H');
         }
 #if !defined(TCWL_CLAP)
         if (menu.active() && webui.oledEnabled()) {
@@ -987,7 +1017,7 @@ static void ltcLoop() {
 #if OLED_ENABLE
         if (webui.oledEnabled()) {
             fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
-            oled.update(tcStr, ltc.fps(), ltcDecoder.locked(), "LTC", tcSource);
+            oled.update(tcStr, ltc.fps(), ltcDecoder.locked(), gDeviceName, webui.autoFps(), "IN", 0, readBatteryPct(), 'L');
         }
 #if defined(TCWL_LTC) && !defined(TCWL_CLAP)
         if (menu.active() && webui.oledEnabled()) {
@@ -1036,7 +1066,7 @@ static void ltcLoop() {
         if (webui.oledEnabled()) {
             fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
             bool bleOk = bleTimecodeConnected();
-            oled.update(tcStr, ltc.fps(), bleOk, "LTC", bleOk ? "LINK" : "FREE");
+            oled.update(tcStr, ltc.fps(), bleOk, gDeviceName, webui.autoFps(), "OUT", 0, readBatteryPct());
         }
 #if defined(TCWL_LTC) && !defined(TCWL_CLAP)
         if (menu.active() && webui.oledEnabled()) {
@@ -1123,6 +1153,10 @@ void setup() {
 #endif
         blePrefs.end();
     }
+#if OLED_ENABLE
+    strncpy(gDeviceName, apSsid, sizeof(gDeviceName) - 1);
+    gDeviceName[sizeof(gDeviceName) - 1] = '\0';
+#endif
     // Register persistent callbacks BEFORE begin() so NVS state applies at once
 #if OLED_ENABLE
     webui.onSetOledEnabled([](bool en) {
