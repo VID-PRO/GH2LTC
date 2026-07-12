@@ -30,10 +30,9 @@ jobs:
           mkdir -p upload
 
           for env in master slave clap; do
-            mkdir -p "upload/$env"
-            cp ".pio/build/$env/firmware.bin"    "upload/$env/firmware.bin"
-            cp ".pio/build/$env/bootloader.bin"  "upload/$env/bootloader.bin"
-            cp ".pio/build/$env/partitions.bin"  "upload/$env/partitions.bin"
+            cp ".pio/build/$env/firmware.bin"    "upload/${env}_firmware.bin"
+            cp ".pio/build/$env/bootloader.bin"  "upload/${env}_bootloader.bin"
+            cp ".pio/build/$env/partitions.bin"  "upload/${env}_partitions.bin"
           done
 
           gh release upload "${{ github.ref_name }}" upload/* --clobber
