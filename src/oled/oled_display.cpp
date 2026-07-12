@@ -22,10 +22,10 @@ bool OledDisplay::begin() {
     _u8g2.drawStr((128 - w) / 2, 9, "HDMI2LTC");
 
     const char *role =
-#if BLE_MASTER
-        "Master"
-#elif BLE_SLAVE
-        "Slave"
+#if TCWL_HDMI
+        "HDMI"
+#elif TCWL_LTC
+        "LTC"
 #else
         "?"
 #endif
@@ -54,7 +54,7 @@ void OledDisplay::update(const char *timecode, uint8_t fps, bool locked,
     do {
         _u8g2.setFont(u8g2_font_6x10_tf);
         int w = _u8g2.getStrWidth("HDMI2LTC");
-        _u8g2.drawStr((128 - w) / 2, 9, "HDMI2LTC");
+    _u8g2.drawStr((128 - w) / 2, 9, "TC-WL");
 
         if (locked) {
             _u8g2.setFont(u8g2_font_5x7_tf);

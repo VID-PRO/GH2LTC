@@ -166,15 +166,12 @@ void WebUI::handleApiTc() {
     snprintf(body, sizeof(body),
         "{\"tc\":\"%02u:%02u:%02u:%02u:%02u\","
         "\"fps\":%u,\"df\":%s,\"locked\":%s,\"source\":\"%s\","
-        "\"auto\":%s,\"matrix\":%s,\"oled\":%s,\"ltc\":%s}",
+        "\"auto\":%s}",
         _dd, _hh, _mm, _ss, _ff,
         _fps, _dropFrame ? "true" : "false",
         _hdmiLocked ? "true" : "false",
         _source,
-        _autoFps ? "true" : "false",
-        _matrixEnabled ? "true" : "false",
-        _oledEnabled ? "true" : "false",
-        _ltcEnabled ? "true" : "false");
+        _autoFps ? "true" : "false");
     _server.send(200, "application/json", body);
 }
 
@@ -376,7 +373,8 @@ void WebUI::handleApiWifi() {
 // GET/POST /api/ble  — BLE status and control
 // -----------------------------------------------------------------------
 void WebUI::handleApiBle() {
-    if (bleGetMode() == BLE_MODE_MASTER) {
+    bool isServer = (bleGetMode() == TCWL_MODE_HDMI || bleGetMode() == TCWL_MODE_LTC_MASTER);
+    if (isServer) {
         if (_server.method() == HTTP_POST) {
             String action = _server.arg("action");
 
@@ -416,7 +414,7 @@ void WebUI::handleApiBle() {
             return;
         }
 
-        // GET — return master name + peer list
+        // GET — return server name + peer list
         BlePeerInfo peerBuf[8];
         uint8_t n = bleTimecodeGetPeers(peerBuf, 8);
         String json = "{\"name\":\"" + String(bleTimecodeGetName()) + "\",\"peers\":[";
@@ -489,14 +487,14 @@ void WebUI::handleApiBle() {
 }
 
 // -----------------------------------------------------------------------
-// GET/POST /api/mode  — get/set device mode (master/slave)
+// GET/POST /api/mode  — get/set device mode (HDMI/LTC/LTC-MASTER)
 // -----------------------------------------------------------------------
 void WebUI::handleApiMode() {
-#if defined(BLE_MODE_RUNTIME)
+#if defined(TCWL_LTC) && !defined(TCWL_CLAP)
     if (_server.method() == HTTP_POST) {
         String modeStr = _server.arg("mode");
         int newMode = modeStr.toInt();
-        if (newMode == BLE_MODE_MASTER || newMode == BLE_MODE_SLAVE) {
+        if (newMode == TCWL_MODE_LTC || newMode == TCWL_MODE_LTC_MASTER) {
             bleSetMode(newMode);
             _server.send(200, "application/json", "{\"ok\":true,\"reboot\":true}");
             return;
@@ -507,14 +505,12 @@ void WebUI::handleApiMode() {
     int mode = bleGetMode();
     char body[64];
     snprintf(body, sizeof(body), "{\"mode\":%d,\"modeName\":\"%s\"}",
-             mode, mode == BLE_MODE_MASTER ? "master" : "slave");
+             mode, mode == TCWL_MODE_LTC_MASTER ? "master" : "ltc");
     _server.send(200, "application/json", body);
+#elif defined(TCWL_HDMI)
+    _server.send(200, "application/json", "{\"mode\":1,\"modeName\":\"hdmi\",\"locked\":true}");
 #else
-#if defined(BLE_MASTER)
-    _server.send(200, "application/json", "{\"mode\":1,\"modeName\":\"master\",\"locked\":true}");
-#else
-    _server.send(200, "application/json", "{\"mode\":2,\"modeName\":\"slave\",\"locked\":true}");
-#endif
+    _server.send(200, "application/json", "{\"mode\":2,\"modeName\":\"ltc\",\"locked\":true}");
 #endif
 }
 
@@ -540,6 +536,42 @@ void WebUI::handleRoot() {
 // -----------------------------------------------------------------------
 void WebUI::handleNotFound() {
     _server.send(404, "text/plain", "Not found");
+}
+
+// -----------------------------------------------------------------------
+// OLED / LTC / Matrix / Brightness setters (used by OLED menu)
+// -----------------------------------------------------------------------
+void WebUI::setOledEnabled(bool en) {
+    _oledEnabled = en;
+    _prefs.begin("webui", false);
+    _prefs.putBool("oled_en", en);
+    _prefs.end();
+    if (_oledCb) _oledCb(en);
+}
+
+void WebUI::setLtcEnabled(bool en) {
+    _ltcEnabled = en;
+    _prefs.begin("webui", false);
+    _prefs.putBool("ltc_en", en);
+    _prefs.end();
+    if (_ltcCb) _ltcCb(en);
+}
+
+void WebUI::setMatrixEnabled(bool en) {
+    _matrixEnabled = en;
+    _prefs.begin("webui", false);
+    _prefs.putBool("matrix_en", en);
+    _prefs.end();
+    if (_matrixCb) _matrixCb(en);
+}
+
+void WebUI::setBrightness(uint8_t val) {
+    val = constrain(val, 0, 15);
+    _brightness = val;
+    _prefs.begin("webui", false);
+    _prefs.putUChar("brightness", val);
+    _prefs.end();
+    if (_brightnessCb) _brightnessCb(val);
 }
 
 // =======================================================================
@@ -709,6 +741,14 @@ html,body{
 }
 .fps-btn:hover{border-color:#555;color:#aaa}
 .fps-btn.active{background:#0a2a1a;border-color:#00ffbb;color:#00ffbb}
+.mode-group{display:flex;gap:6px;flex-wrap:wrap}
+.mode-btn{
+  background:transparent;border:1px solid #333;color:#888;
+  padding:5px 10px;border-radius:6px;cursor:pointer;
+  font:inherit;font-size:clamp(10px,1.8vw,13px);transition:.15s
+}
+.mode-btn:hover{border-color:#555;color:#aaa}
+.mode-btn.active{background:#0a2a1a;border-color:#00ffbb;color:#00ffbb}
 
 /* toggle switch */
 .toggle-track{
@@ -939,37 +979,7 @@ html,body{
     </div>
   </div>
 
-  <div class="setting-row">
-    <span class="setting-label">Matrix</span>
-    <label class="toggle-track">
-      <input type="checkbox" id="matrix-toggle" checked>
-      <span class="toggle-switch"></span>
-      <span class="toggle-label" id="matrix-label">On</span>
-    </label>
-  </div>
-
 )rawliteral");
-#ifndef BLE_CLAP
-    html += F(R"rawliteral(
-  <div class="setting-row">
-    <span class="setting-label">OLED</span>
-    <label class="toggle-track">
-      <input type="checkbox" id="oled-toggle" checked>
-      <span class="toggle-switch"></span>
-      <span class="toggle-label" id="oled-label">On</span>
-    </label>
-  </div>
-
-  <div class="setting-row">
-    <span class="setting-label">LTC Out</span>
-    <label class="toggle-track">
-      <input type="checkbox" id="ltc-toggle" checked>
-      <span class="toggle-switch"></span>
-      <span class="toggle-label" id="ltc-label">On</span>
-    </label>
-  </div>
-)rawliteral");
-#endif
     html += F(R"rawliteral(
   <div class="setting-row">
     <span class="setting-label">Jam Time</span>
@@ -1015,28 +1025,51 @@ html,body{
 
   <button class="restart-btn" onclick="restartEsp()">Restart Device</button>
 )rawliteral");
-#if BLE_MASTER
+#if defined(TCWL_LTC) && !defined(TCWL_CLAP)
     html += F(R"rawliteral(
-  <div class="ble-drawer-section" id="ble-section-master">
+  <div class="setting-row">
+    <span class="setting-label">Device Mode</span>
+    <div class="mode-group" id="mode-group">
+      <button class="mode-btn" data-mode="2" onclick="switchMode(2)">Slave (BLE)</button>
+      <button class="mode-btn" data-mode="3" onclick="switchMode(3)">Master (LTC In)</button>
+    </div>
+  </div>
+)rawliteral");
+#endif
+#if TCWL_HDMI
+    html += F(R"rawliteral(
+  <div class="ble-drawer-section" id="ble-section-hdmi">
     <div class="settings-title">BLE Setup &mdash; Master</div>
     <div class="ble-form">
       <div class="row">
-        <input type="text" id="ble-name-input" value="" maxlength="32">
+        <input type="text" id="ble-hdmi-name-input" value="" maxlength="32">
         <button onclick="bleSetName()">Save Name</button>
         <button class="wifi-forget-btn" onclick="bleDisconnectAll()">Disconnect All</button>
       </div>
       <div id="ble-peers"></div>
-      <div class="ble-msg" id="ble-msg-master"></div>
+      <div class="ble-msg" id="ble-msg-hdmi"></div>
     </div>
   </div>
 )rawliteral");
-#elif BLE_SLAVE
+#elif TCWL_LTC
     html += F(R"rawliteral(
-  <div class="ble-drawer-section" id="ble-section-slave">
-    <div class="settings-title">BLE Setup &mdash; Slave</div>
+  <div class="ble-drawer-section" id="ble-section-ltc-server" style="display:none">
+    <div class="settings-title">BLE Setup &mdash; Source</div>
     <div class="ble-form">
       <div class="row">
-        <input type="text" id="ble-slave-name-input" value="" maxlength="32">
+        <input type="text" id="ble-server-name-input" value="" maxlength="32">
+        <button onclick="bleSetName()">Save Name</button>
+        <button class="wifi-forget-btn" onclick="bleDisconnectAll()">Disconnect All</button>
+      </div>
+      <div id="ble-peers"></div>
+      <div class="ble-msg" id="ble-msg-hdmi"></div>
+    </div>
+  </div>
+  <div class="ble-drawer-section" id="ble-section-ltc-client" style="display:none">
+    <div class="settings-title">BLE Setup &mdash; Client</div>
+    <div class="ble-form">
+      <div class="row">
+        <input type="text" id="ble-ltc-name-input" value="" maxlength="32">
         <button onclick="bleSetName()">Save Name</button>
       </div>
     </div>
@@ -1045,7 +1078,7 @@ html,body{
     </div>
     <div class="ble-form">
       <button onclick="bleScan()" id="ble-scan-btn">Scan</button>
-      <div class="ble-msg" id="ble-msg-slave"></div>
+      <div class="ble-msg" id="ble-msg-ltc"></div>
     </div>
     <div id="ble-results"></div>
   </div>
@@ -1064,17 +1097,7 @@ html,body{
   var fpsEl=document.getElementById('fps-badge');
   var dfChk=document.getElementById('df-toggle');
   var dfLbl=document.getElementById('df-label');
-  var matrixToggle=document.getElementById('matrix-toggle');
-  var matrixLabel=document.getElementById('matrix-label');
 )rawliteral"));
-#ifndef BLE_CLAP
-    html += String(F(R"rawliteral(
-  var oledToggle=document.getElementById('oled-toggle');
-  var oledLabel=document.getElementById('oled-label');
-  var ltcToggle=document.getElementById('ltc-toggle');
-  var ltcLabel=document.getElementById('ltc-label');
-)rawliteral"));
-#endif
     html += String(F(R"rawliteral(
   // WiFi DOM refs
   var wifiSsidEl=document.getElementById('wifi-ssid');
@@ -1102,18 +1125,6 @@ html,body{
         if(dfChk.checked!==d.df){
           dfChk.checked=d.df;
           dfLbl.textContent=d.df?'On':'Off';
-        }
-        if(matrixToggle.checked!==d.matrix){
-          matrixToggle.checked=d.matrix;
-          matrixLabel.textContent=d.matrix?'On':'Off';
-        }
-        if(oledToggle && oledToggle.checked!==d.oled){
-          oledToggle.checked=d.oled;
-          oledLabel.textContent=d.oled?'On':'Off';
-        }
-        if(ltcToggle && ltcToggle.checked!==d.ltc){
-          ltcToggle.checked=d.ltc;
-          ltcLabel.textContent=d.ltc?'On':'Off';
         }
       }catch(e){}
     };
@@ -1175,36 +1186,6 @@ html,body{
     x.open('POST','/api/brightness',true);
     x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
     x.send('val='+this.value);
-  });
-
-  // ── Matrix toggle ──
-  matrixToggle.addEventListener('change',function(){
-    var en=this.checked?1:0;
-    matrixLabel.textContent=this.checked?'On':'Off';
-    var x=new XMLHttpRequest();
-    x.open('POST','/api/matrix',true);
-    x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
-    x.send('en='+en);
-  });
-
-  // ── OLED toggle ──
-  if(typeof oledToggle !== 'undefined') oledToggle.addEventListener('change',function(){
-    var en=this.checked?1:0;
-    oledLabel.textContent=this.checked?'On':'Off';
-    var x=new XMLHttpRequest();
-    x.open('POST','/api/oled',true);
-    x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
-    x.send('en='+en);
-  });
-
-  // ── LTC Out toggle ──
-  if(typeof ltcToggle !== 'undefined') ltcToggle.addEventListener('change',function(){
-    var en=this.checked?1:0;
-    ltcLabel.textContent=this.checked?'On':'Off';
-    var x=new XMLHttpRequest();
-    x.open('POST','/api/ltc',true);
-    x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
-    x.send('en='+en);
   });
 
   // ── Restart button ──
@@ -1321,8 +1302,11 @@ function wifiForget(){
     html += String(F(R"rawliteral(
 // ===== BLE functions =====
 function bleSetName(){
-  var el=document.getElementById('ble-name-input')||document.getElementById('ble-slave-name-input');
-  var msgEl=document.getElementById('ble-msg-master')||document.getElementById('ble-msg-slave');
+  var el=document.getElementById('ble-hdmi-name-input');
+  if(!el||el.offsetParent===null)el=document.getElementById('ble-server-name-input');
+  if(!el||el.offsetParent===null)el=document.getElementById('ble-ltc-name-input');
+  var msgEl=document.getElementById('ble-msg-hdmi');
+  if(!msgEl||msgEl.offsetParent===null)msgEl=document.getElementById('ble-msg-ltc');
   var n=el?el.value:'';
   if(!n)return;
   var x=new XMLHttpRequest();
@@ -1344,31 +1328,32 @@ function bleSetName(){
 }
 
 function bleDisconnectAll(){
-  var msgEl=document.getElementById('ble-msg-master');
+  var msgEl=document.getElementById('ble-msg-hdmi');
   var x=new XMLHttpRequest();
   x.open('POST','/api/ble',true);
   x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
   x.onload=function(){if(x.status==200){
     if(msgEl)msgEl.textContent='Disconnected all';
-    pollBleMaster();
+    pollBleHdmi();
   }};
   x.send('action=disconnect');
 }
 
 function bleDisconnectPeer(addr){
-  var msgEl=document.getElementById('ble-msg-master');
+  var msgEl=document.getElementById('ble-msg-hdmi');
   var x=new XMLHttpRequest();
   x.open('POST','/api/ble',true);
   x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
   x.onload=function(){if(x.status==200){
     if(msgEl)msgEl.textContent='Disconnected '+addr;
-    pollBleMaster();
+    pollBleHdmi();
   }};
   x.send('action=disconnect_peer&address='+encodeURIComponent(addr));
 }
 
-function pollBleMaster(){
+function pollBleHdmi(){
   var el=document.getElementById('ble-peers');
+  var nameEl=document.getElementById('ble-server-name-input')||document.getElementById('ble-hdmi-name-input');
   if(!el)return;
   var x=new XMLHttpRequest();
   x.open('GET','/api/ble',true);
@@ -1385,9 +1370,10 @@ function pollBleMaster(){
         h+='</div>';
       }
     } else {
-      h='<div class="ble-subtitle" style="color:#444">No slaves connected</div>';
+      h='<div class="ble-subtitle" style="color:#444">No clients connected</div>';
     }
     el.innerHTML=h;
+    if(nameEl&&d.name)nameEl.value=d.name;
     }catch(e){}
   };
   x.send();
@@ -1395,7 +1381,7 @@ function pollBleMaster(){
 
 function bleScan(){
   var btn=document.getElementById('ble-scan-btn');
-  var msgEl=document.getElementById('ble-msg-slave');
+  var msgEl=document.getElementById('ble-msg-ltc');
   var resultsEl=document.getElementById('ble-results');
   if(btn){btn.disabled=true;btn.textContent='Scanning...';}
   if(msgEl)msgEl.textContent='';
@@ -1414,28 +1400,28 @@ function bleScan(){
       h+='<button onclick="bleSelect(\''+d.devices[i].address+'\')">Connect</button>';
       h+='</div>';
     }
-    if(resultsEl)resultsEl.innerHTML=h||'<div class="ble-device">No masters found</div>';
-    pollBleSlave();
+    if(resultsEl)resultsEl.innerHTML=h||'<div class="ble-device">No server found</div>';
+    pollBleLtc();
   };
   x.send('action=scan');
 }
 
 function bleSelect(addr){
-  var msgEl=document.getElementById('ble-msg-slave');
+  var msgEl=document.getElementById('ble-msg-ltc');
   var x=new XMLHttpRequest();
   x.open('POST','/api/ble',true);
   x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
   x.onload=function(){if(x.status==200){
     if(msgEl)msgEl.textContent='Connecting to '+addr+'...';
-    pollBleSlave();
+    pollBleLtc();
     setTimeout(function(){location.reload()},3000);
   }};
   x.send('action=select&address='+encodeURIComponent(addr));
 }
 
-function pollBleSlave(){
+function pollBleLtc(){
   var el=document.getElementById('ble-status');
-  var nameEl=document.getElementById('ble-slave-name-input');
+  var nameEl=document.getElementById('ble-ltc-name-input');
   if(!el)return;
   var x=new XMLHttpRequest();
   x.open('GET','/api/ble',true);
@@ -1451,15 +1437,84 @@ function pollBleSlave(){
 
 // ===== Polling =====
 )rawliteral"));
-#if BLE_MASTER
-  html += F("setInterval(pollBleMaster,3000);\n");
-#elif BLE_SLAVE
-  html += F("setInterval(pollBleSlave,3000);\n");
+#if TCWL_HDMI
+  html += F("setInterval(pollBleHdmi,3000);\n");
+#elif defined(TCWL_LTC) && !defined(TCWL_CLAP)
+  html += F(R"rawliteral(
+function switchMode(mode){
+  if(!confirm('Switch device mode? This will restart the device.'))return;
+  var x=new XMLHttpRequest();
+  x.open('POST','/api/mode',true);
+  x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
+  x.onload=function(){
+    if(x.status==200){setTimeout(function(){location.reload()},1000);}
+  };
+  x.send('mode='+mode);
+}
+
+var currentMode=2;
+function updateBleSections(){
+  var sv=document.getElementById('ble-section-ltc-server');
+  var cl=document.getElementById('ble-section-ltc-client');
+  var mg=document.getElementById('mode-group');
+  if(!sv||!cl)return;
+  if(currentMode==3){
+    sv.style.display='';cl.style.display='none';
+  }else{
+    sv.style.display='none';cl.style.display='';
+  }
+  if(mg){
+    mg.querySelectorAll('.mode-btn').forEach(function(b){
+      b.classList.toggle('active',parseInt(b.dataset.mode)===currentMode);
+    });
+  }
+}
+
+(function(){
+  var x=new XMLHttpRequest();
+  x.open('GET','/api/mode',true);
+  x.onload=function(){
+    if(x.status!=200)return;
+    try{var d=JSON.parse(x.responseText);
+    currentMode=d.mode;
+    updateBleSections();
+    }catch(e){}
+  };
+  x.send();
+})();
+
+setInterval(function(){
+  var x=new XMLHttpRequest();
+  x.open('GET','/api/mode',true);
+  x.onload=function(){
+    if(x.status!=200)return;
+    try{var d=JSON.parse(x.responseText);
+    var old=currentMode;
+    currentMode=d.mode;
+    if(old!==currentMode)updateBleSections();
+    }catch(e){}
+  };
+  x.send();
+},5000);
+
+// Start both pollers — each checks currentMode internally
+setInterval(function(){
+  if(currentMode==3)pollBleHdmi();
+},3000);
+setInterval(function(){
+  if(currentMode!=3)pollBleLtc();
+},3000);
+if(currentMode!=3)pollBleLtc();
+)rawliteral");
+#elif TCWL_LTC
+  html += F("setInterval(pollBleLtc,3000);\n");
 #endif
+#if TCWL_CLAP
 html += String(F(R"rawliteral(
 // Load initial BLE name and status
-pollBleSlave();
+pollBleLtc();
 )rawliteral"));
+#endif
 
     // Part 5: closing tags
     html += String(F(R"rawliteral(</script>

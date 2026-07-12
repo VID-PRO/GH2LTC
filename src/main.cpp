@@ -8,6 +8,7 @@
 #include "hdmi/tc358743.h"
 #include "hdmi/tc358743_regs.h"
 #include "ltc/ltc_encoder.h"
+#include "ltc/ltc_decoder.h"
 #include "hdmi/panasonic_tc.h"
 #if RTC_ENABLE
 #include "rtc/ds3231.h"
@@ -23,13 +24,21 @@
 #endif
 #include "timecode/ble_timecode.h"
 
+#if TCWL_LTC && OLED_ENABLE
+#include "btn/button.h"
+#include "oled/oled_menu.h"
+#endif
+
 // ---------------------------------------------------------------------------
 // Master-specific globals
 // ---------------------------------------------------------------------------
-#if BLE_MASTER
+#if TCWL_HDMI
 TC358743 tc(Wire, TC_I2C_ADDR);
 #endif
 LtcEncoder ltc(LTC_OUT_PIN, LTC_FPS, LTC_DROP_FRAME);
+#if TCWL_LTC
+static LtcDecoder ltcDecoder(LTC_IN_PIN);
+#endif
 static char tcStr[13] = "00:00:00:00";
 
 static void fmtTcStr(uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff) {
@@ -38,6 +47,14 @@ static void fmtTcStr(uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff) {
 
 #if OLED_ENABLE
 static OledDisplay oled;
+
+#if TCWL_LTC && !defined(TCWL_CLAP)
+static Button btnUp(BTN_UP_PIN);
+static Button btnDown(BTN_DOWN_PIN);
+static Button btnOk(BTN_OK_PIN);
+static Button btnCancel(BTN_CANCEL_PIN);
+static OledMenu menu(oled);
+#endif
 #endif
 
 #if RTC_ENABLE
@@ -65,7 +82,7 @@ unsigned long lastFramePoll = 0;
 unsigned long framePollMs = 1000 / LTC_FPS;
 
 // ---------------------------------------------------------------------------
-// Frame rate auto-detection (master only)
+// Frame rate auto-detection (HDMI only)
 // ---------------------------------------------------------------------------
 #if FPS_AUTO_DETECT
 static bool fpsDetected = false;
@@ -110,9 +127,9 @@ static bool tryDetectFps() {
 #endif
 
 // ---------------------------------------------------------------------------
-// Reverse-engineer mode helpers (master only)
+// Reverse-engineer mode helpers (HDMI only)
 // ---------------------------------------------------------------------------
-#if defined(BLE_MASTER) && REVERSE_ENGINEER_MODE
+#if defined(TCWL_HDMI) && REVERSE_ENGINEER_MODE
 void dumpBuffer(const char *label, uint16_t reg, size_t len) {
     uint8_t buf[32];
     if (len > sizeof(buf)) len = sizeof(buf);
@@ -355,6 +372,82 @@ static void onBleTimecode(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_
     ltc.setDd(dd);
 }
 
+#if TCWL_LTC
+static void onLtcDecoded(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff) {
+    (void)dd;
+    ltc.setTime(hh, mm, ss, ff);
+}
+
+static unsigned long lastDecodedFrameMs = 0;
+#endif
+
+#if defined(TCWL_LTC) && OLED_ENABLE && !defined(TCWL_CLAP)
+// ── OLED menu helpers ──────────────────────────────────────────
+static void menuSaveFps(uint8_t fps, bool df) {
+    ltc.setFps(fps, df);
+    framePollMs = 1000 / fps;
+    Preferences p;
+    p.begin("ltc", false);
+    p.putUChar("fps", fps);
+    p.putBool("df", df);
+    p.end();
+}
+static const char* menuGetFps() {
+    static char buf[8];
+    snprintf(buf, sizeof(buf), "%dfps", ltc.fps());
+    return buf;
+}
+static void menuCycleFps() {
+    static const uint8_t vals[] = {24, 25, 30, 50, 60};
+    uint8_t cur = ltc.fps();
+    uint8_t next = vals[0];
+    for (uint8_t i = 0; i < 5; i++) {
+        if (vals[i] == cur) { next = vals[(i + 1) % 5]; break; }
+    }
+    menuSaveFps(next, ltc.dropFrame());
+}
+static const char* menuGetDf() {
+    return ltc.dropFrame() ? "On" : "Off";
+}
+static void menuToggleDf() {
+    menuSaveFps(ltc.fps(), !ltc.dropFrame());
+}
+static const char* menuGetMode() {
+    return bleGetMode() == TCWL_MODE_LTC_MASTER ? "Master" : "Slave";
+}
+static void menuToggleMode() {
+    bleSetMode(bleGetMode() == TCWL_MODE_LTC_MASTER ? TCWL_MODE_LTC : TCWL_MODE_LTC_MASTER);
+    delay(100);
+    ESP.restart();
+}
+static const char* menuGetLtcOut() { return webui.ltcEnabled() ? "On" : "Off"; }
+static const char* menuGetOled()   { return webui.oledEnabled() ? "On" : "Off"; }
+static const char* menuGetMatrix() { return webui.matrixEnabled() ? "On" : "Off"; }
+static const char* menuGetBright() {
+    static char buf[4];
+    snprintf(buf, sizeof(buf), "%d", webui.brightness());
+    return buf;
+}
+static void menuToggleLtcOut() { webui.setLtcEnabled(!webui.ltcEnabled()); }
+static void menuToggleOled()   { webui.setOledEnabled(!webui.oledEnabled()); oled.forceRedraw(); }
+static void menuToggleMatrix() { webui.setMatrixEnabled(!webui.matrixEnabled()); }
+static void menuCycleBright()  { webui.setBrightness((webui.brightness() + 1) % 16); }
+static void menuExit()         { menu.hide(); oled.forceRedraw(); }
+
+static void menuBuildItems() {
+    menu.clear();
+    menu.addItem("FPS",       menuGetFps,    menuCycleFps);
+    menu.addItem("DropFr",    menuGetDf,     menuToggleDf);
+    menu.addItem("Mode",      menuGetMode,   menuToggleMode);
+    menu.addItem("LTC Out",   menuGetLtcOut, menuToggleLtcOut);
+    menu.addItem("OLED",      menuGetOled,   menuToggleOled);
+    menu.addItem("Matrix",    menuGetMatrix, menuToggleMatrix);
+    menu.addItem("Bright",    menuGetBright, menuCycleBright);
+    menu.addItem("Exit",      nullptr,       menuExit);
+    menu.setTimeout(15000);
+}
+#endif
+
 // ---------------------------------------------------------------------------
 // Common: print reset reason
 // ---------------------------------------------------------------------------
@@ -382,14 +475,17 @@ static void printResetReason() {
 static void printConfig() {
     Serial.println(F("── CONFIG ──────────────────────────────"));
     Serial.print(F("  MODE              "));
-#if BLE_CLAP
+#if TCWL_CLAP
     Serial.println(F("CLAP"));
-#elif BLE_MASTER
-    Serial.println(F("MASTER"));
+#elif TCWL_HDMI
+    Serial.println(F("HDMI"));
 #else
-    Serial.println(F("SLAVE"));
+    if (bleGetMode() == TCWL_MODE_LTC_MASTER)
+        Serial.println(F("LTC (master — LTC input server)"));
+    else
+        Serial.println(F("LTC (slave — BLE client)"));
 #endif
-#ifndef BLE_CLAP
+#ifndef TCWL_CLAP
     Serial.print(F("  LTC_ENABLED       ")); Serial.println(webui.ltcEnabled() ? "1" : "0");
     Serial.print(F("  LTC_OUT_PIN       ")); Serial.println(LTC_OUT_PIN);
     Serial.print(F("  LTC_FPS           ")); Serial.println(LTC_FPS);
@@ -399,13 +495,13 @@ static void printConfig() {
 #ifdef REVERSE_ENGINEER_MODE
     Serial.print(F("  REVERSE_ENGINEER  ")); Serial.println(REVERSE_ENGINEER_MODE);
 #endif
-#if BLE_MASTER
+#if TCWL_HDMI
     Serial.print(F("  TC358743 I2C      SDA=")); Serial.print(TC_I2C_SDA_PIN);
     Serial.print(F(" SCL=")); Serial.print(TC_I2C_SCL_PIN);
     Serial.print(F(" ADDR=0x")); Serial.println(TC_I2C_ADDR, HEX);
     Serial.print(F("  TC_RESET_PIN      ")); Serial.println(TC_RESET_PIN);
 #endif
-#ifndef BLE_CLAP
+#ifndef TCWL_CLAP
     Serial.print(F("  OLED_ENABLED      ")); Serial.println(webui.oledEnabled() ? "1" : "0");
     if (OLED_ENABLE) { Serial.print(F("  OLED_I2C_ADDR    0x")); Serial.println(OLED_I2C_ADDR, HEX); }
 #endif
@@ -432,8 +528,8 @@ static void printConfig() {
 // ===========================================================================
 // Master-specific: I2C/HDMI setup
 // ===========================================================================
-#if BLE_MASTER
-static void masterSetup() {
+#if TCWL_HDMI
+static void hdmiSetup() {
     // Load persisted FPS/DF from NVS
     {
         Preferences prefs;
@@ -548,20 +644,20 @@ static void masterSetup() {
     mx7219.begin();
     mx7219.setIntensity(webui.brightness());
     if (webui.matrixEnabled()) {
-        mx7219.showText("MASTER");
+        mx7219.showText("TC-WL-HDMI");
         delay(3000);
     }
     Serial.print(MAX7219_NUM_MODULES);
     Serial.println(F(" modules initialized."));
 #endif
 }
-#endif // BLE_MASTER
+#endif // TCWL_HDMI
 
 // ===========================================================================
 // Master-specific: loop
 // ===========================================================================
-#if BLE_MASTER
-static void masterLoop() {
+#if TCWL_HDMI
+static void hdmiLoop() {
     unsigned long now = millis();
 
     // AP health check
@@ -699,7 +795,7 @@ static void masterLoop() {
 #if OLED_ENABLE
         if (webui.oledEnabled()) {
             fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
-            oled.update(tcStr, ltc.fps(), hdmiOk, "Master", tcSource, bleTimecodeConnectedCount());
+            oled.update(tcStr, ltc.fps(), hdmiOk, "HDMI", tcSource, bleTimecodeConnectedCount());
         }
 #endif
 #if MAX7219_ENABLE
@@ -717,20 +813,28 @@ static void masterLoop() {
 #endif
     }
 }
-#endif // BLE_MASTER
+#endif // TCWL_HDMI
 
 // ===========================================================================
 // Slave-specific: setup
 // ===========================================================================
-#if BLE_SLAVE
-static void slaveSetup() {
+#if TCWL_LTC
+static void ltcSetup() {
 #if OLED_ENABLE || RTC_ENABLE
     Wire.begin(TC_I2C_SDA_PIN, TC_I2C_SCL_PIN);
 #endif
 
     ltc.begin();
     ltc.setTime(0, 0, 0, 0);
-#ifndef BLE_CLAP
+
+#if defined(TCWL_LTC) && OLED_ENABLE && !defined(TCWL_CLAP)
+    btnUp.begin();
+    btnDown.begin();
+    btnOk.begin();
+    btnCancel.begin();
+    menuBuildItems();
+#endif
+#ifndef TCWL_CLAP
     Serial.print(F("LTC encoder "));
     Serial.println(webui.ltcEnabled() ? F("started") : F("disabled"));
 #endif
@@ -763,73 +867,149 @@ static void slaveSetup() {
     mx7219.begin();
     mx7219.setIntensity(webui.brightness());
     if (webui.matrixEnabled()) {
-#if BLE_CLAP
-        mx7219.showText("CLAP");
+#if TCWL_CLAP
+        mx7219.showText("TC-WL-CLAP");
 #else
-        mx7219.showText("SLAVE");
+        mx7219.showText("TC-WL-LTC");
 #endif
         delay(2000);
     }
     Serial.println(F("MAX7219 started"));
 #endif
 
-    Serial.println(F("Ready. Scanning for master..."));
+    if (bleGetMode() == TCWL_MODE_LTC_MASTER) {
+        ltc.setEnabled(false);
+        ltcDecoder.begin();
+        ltcDecoder.setCallback(onLtcDecoded);
+        Serial.println(F("LTC decoder started — acting as source (BLE server)"));
+    } else {
+        ltc.setEnabled(true);
+        bleTimecodeSetCallback(onBleTimecode);
+        Serial.println(F("BLE client mode — scanning for server..."));
+    }
 }
 
 // ===========================================================================
 // Slave-specific: loop
 // ===========================================================================
-static void slaveLoop() {
-    bleTimecodePoll();
+static void ltcLoop() {
+#if defined(TCWL_LTC) && OLED_ENABLE && !defined(TCWL_CLAP)
+    btnUp.read();
+    btnDown.read();
+    btnOk.read();
+    btnCancel.read();
 
-    uint16_t frames = ltc.framesCompleted();
-    if (frames > 0) {
-#if RTC_ENABLE
-        if (!bleTimecodeConnected() && rtcPresent) {
-            unsigned long now = millis();
-            if (now - lastRtcReadMs >= 1000) {
-                lastRtcReadMs = now;
-                if (rtc.readTime(rtcHH, rtcMM, rtcSS)) {
-                    lastRtcSyncMs = now;
-                }
-            }
-            unsigned long elapsed = now - lastRtcSyncMs;
-            uint8_t ff = (elapsed * ltc.fps()) / 1000;
-            if (ff >= ltc.fps()) ff = ltc.fps() - 1;
-            ltc.setTime(rtcHH, rtcMM, rtcSS, ff);
-        } else
-#endif
-        {
-            while (frames--) ltc.tick();
+    if (!menu.active()) {
+        if (btnUp.pressed() || btnDown.pressed() || btnOk.pressed() || btnCancel.pressed()) {
+            menu.show();
         }
     }
 
-#if OLED_ENABLE
-    if (webui.oledEnabled()) {
-        fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
-        bool bleOk = bleTimecodeConnected();
-        oled.update(tcStr, ltc.fps(), bleOk, "Slave", bleOk ? "LINK" : "FREE");
+    if (menu.active()) {
+        if (btnUp.pressed())      menu.up();
+        if (btnDown.pressed())    menu.down();
+        if (btnOk.released())     menu.ok(btnOk.heldFor(2000));
+        if (btnCancel.released()) { menu.cancel(); oled.forceRedraw(); }
+        if (!menu.tick())         oled.forceRedraw();
     }
+#endif
+
+    if (bleGetMode() == TCWL_MODE_LTC_MASTER) {
+        ltcDecoder.poll();
+
+        unsigned long now = millis();
+
+        uint16_t frames = ltc.framesCompleted();
+        if (frames > 0) {
+            bool signalOk = ltcDecoder.locked() && (now - lastDecodedFrameMs < 2000);
+            if (!signalOk) {
+                while (frames--) ltc.tick();
+                strcpy(tcSource, "FREE");
+            } else {
+                strcpy(tcSource, "LTC-IN");
+            }
+
+            bleTimecodeUpdate(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
+        }
+
+        if (ltcDecoder.locked()) lastDecodedFrameMs = now;
+
+#if OLED_ENABLE
+        if (webui.oledEnabled()) {
+            fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
+            oled.update(tcStr, ltc.fps(), ltcDecoder.locked(), "LTC", tcSource);
+        }
+#if defined(TCWL_LTC) && !defined(TCWL_CLAP)
+        if (menu.active() && webui.oledEnabled()) {
+            menu.draw();
+        }
+#endif
 #endif
 
 #if MAX7219_ENABLE
-#if WEBUI_ENABLE
-    if (webui.matrixEnabled()) {
-        mx7219.showTimecode(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
-    }
-#else
-    mx7219.showTimecode(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
-#endif
-    mx7219.setBleConnected(bleTimecodeConnected());
+        if (webui.matrixEnabled()) {
+            mx7219.showTimecode(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
+        }
+        mx7219.setBleConnected(bleTimecodeConnected());
 #endif
 
 #if WEBUI_ENABLE
-    webui.update(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff(),
-                 ltc.fps(), ltc.dropFrame(), bleTimecodeConnected(),
-                 bleTimecodeConnected() ? "BLE" : "SCAN");
+        webui.update(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff(),
+                     ltc.fps(), ltc.dropFrame(), ltcDecoder.locked(), tcSource);
 #endif
+    } else {
+        bleTimecodePoll();
+
+        uint16_t frames = ltc.framesCompleted();
+        if (frames > 0) {
+#if RTC_ENABLE
+            if (!bleTimecodeConnected() && rtcPresent) {
+                unsigned long now = millis();
+                if (now - lastRtcReadMs >= 1000) {
+                    lastRtcReadMs = now;
+                    if (rtc.readTime(rtcHH, rtcMM, rtcSS)) {
+                        lastRtcSyncMs = now;
+                    }
+                }
+                unsigned long elapsed = now - lastRtcSyncMs;
+                uint8_t ff = (elapsed * ltc.fps()) / 1000;
+                if (ff >= ltc.fps()) ff = ltc.fps() - 1;
+                ltc.setTime(rtcHH, rtcMM, rtcSS, ff);
+            } else
+#endif
+            {
+                while (frames--) ltc.tick();
+            }
+        }
+
+#if OLED_ENABLE
+        if (webui.oledEnabled()) {
+            fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
+            bool bleOk = bleTimecodeConnected();
+            oled.update(tcStr, ltc.fps(), bleOk, "LTC", bleOk ? "LINK" : "FREE");
+        }
+#if defined(TCWL_LTC) && !defined(TCWL_CLAP)
+        if (menu.active() && webui.oledEnabled()) {
+            menu.draw();
+        }
+#endif
+#endif
+
+#if MAX7219_ENABLE
+        if (webui.matrixEnabled()) {
+            mx7219.showTimecode(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
+        }
+        mx7219.setBleConnected(bleTimecodeConnected());
+#endif
+
+#if WEBUI_ENABLE
+        webui.update(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff(),
+                     ltc.fps(), ltc.dropFrame(), bleTimecodeConnected(),
+                     bleTimecodeConnected() ? "BLE" : "SCAN");
+#endif
+    }
 }
-#endif // BLE_SLAVE
+#endif // TCWL_LTC
 
 // ===========================================================================
 // setup()
@@ -840,20 +1020,19 @@ void setup() {
     delay(2000);
     printResetReason();
 
-    Serial.print(F("GH5 HDMI -> LTC box starting in "));
-#if BLE_CLAP
+    Serial.print(F("TC-WL starting in "));
+#if TCWL_CLAP
     Serial.println(F("CLAP mode..."));
-#elif BLE_MASTER
-    Serial.println(F("MASTER mode..."));
+#elif TCWL_HDMI
+    Serial.println(F("HDMI mode..."));
 #else
-    Serial.println(F("SLAVE mode..."));
+    Serial.println(F("LTC mode..."));
 #endif
     Serial.println();
 
     // Start WiFi AP + web server BEFORE LTC timer
 #if WEBUI_ENABLE
-    // Build AP SSID from BLE name: "GH2LTC_XXXX" (master), "TC-SLAVE-XXXX" (slave),
-    // "TC-CLAP-XXXX" (clap), or custom name if saved
+    // Build AP SSID from BLE name or env name with last 4 MAC digits
     static char apSsid[33];
     {
         Preferences blePrefs;
@@ -863,26 +1042,34 @@ void setup() {
         char macSuffix[8];
         snprintf(macSuffix, sizeof(macSuffix), "%02X%02X", mac[4], mac[5]);
 
-#if BLE_CLAP
+#if TCWL_CLAP
         char defaultClapName[33];
-        snprintf(defaultClapName, sizeof(defaultClapName), "TC-CLAP-%s", macSuffix);
-        String bleName = blePrefs.getString("slave_name", defaultClapName);
+        snprintf(defaultClapName, sizeof(defaultClapName), "TC-WL-CLAP-%s", macSuffix);
+        String bleName = blePrefs.getString("ltc_name", defaultClapName);
         strncpy(apSsid, bleName.c_str(), sizeof(apSsid) - 1);
         apSsid[sizeof(apSsid) - 1] = '\0';
-#elif BLE_MASTER
-        String bleName = blePrefs.getString("name", "TC-LTC-MASTER");
-        if (bleName == "TC-LTC-MASTER") {
-            snprintf(apSsid, sizeof(apSsid), "TC-MASTER-%s", macSuffix);
+#elif TCWL_HDMI
+        String bleName = blePrefs.getString("name", "TC-WL-HDMI");
+        if (bleName == "TC-WL-HDMI") {
+            snprintf(apSsid, sizeof(apSsid), "TC-WL-HDMI-%s", macSuffix);
         } else {
             strncpy(apSsid, bleName.c_str(), sizeof(apSsid) - 1);
             apSsid[sizeof(apSsid) - 1] = '\0';
         }
 #else
-        char defaultSlaveName[33];
-        snprintf(defaultSlaveName, sizeof(defaultSlaveName), "TC-SLAVE-%s", macSuffix);
-        String bleName = blePrefs.getString("slave_name", defaultSlaveName);
-        strncpy(apSsid, bleName.c_str(), sizeof(apSsid) - 1);
-        apSsid[sizeof(apSsid) - 1] = '\0';
+        if (bleGetMode() == TCWL_MODE_LTC_MASTER) {
+            char defaultName[33];
+            snprintf(defaultName, sizeof(defaultName), "TC-WL-LTC-%s", macSuffix);
+            String bleName = blePrefs.getString("ltc_name", defaultName);
+            strncpy(apSsid, bleName.c_str(), sizeof(apSsid) - 1);
+            apSsid[sizeof(apSsid) - 1] = '\0';
+        } else {
+            char defaultSlaveName[33];
+            snprintf(defaultSlaveName, sizeof(defaultSlaveName), "TC-WL-LTC-%s", macSuffix);
+            String bleName = blePrefs.getString("ltc_name", defaultSlaveName);
+            strncpy(apSsid, bleName.c_str(), sizeof(apSsid) - 1);
+            apSsid[sizeof(apSsid) - 1] = '\0';
+        }
 #endif
         blePrefs.end();
     }
@@ -965,20 +1152,22 @@ void setup() {
 
     Serial.println();
 
-    // Init BLE (starts server for master, scanner for slave)
+    // Init BLE (starts server for HDMI or LTC-master, scanner for LTC-slave)
     {
         Serial.print(F("BLE init... "));
         bleTimecodeInit();
-#if BLE_SLAVE
-        bleTimecodeSetCallback(onBleTimecode);
+#if TCWL_LTC
+        if (bleGetMode() != TCWL_MODE_LTC_MASTER) {
+            bleTimecodeSetCallback(onBleTimecode);
+        }
 #endif
         Serial.println(F("done"));
     }
 
-#if BLE_MASTER
-    masterSetup();
+#if TCWL_HDMI
+    hdmiSetup();
 #else
-    slaveSetup();
+    ltcSetup();
 #endif
 
     Serial.println(F("System ready."));
@@ -992,9 +1181,9 @@ void loop() {
     webui.handleClient();
 #endif
 
-#if BLE_MASTER
-    masterLoop();
+#if TCWL_HDMI
+    hdmiLoop();
 #else
-    slaveLoop();
+    ltcLoop();
 #endif
 }

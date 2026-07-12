@@ -3,14 +3,14 @@
 #include <Preferences.h>
 
 static Preferences blePrefs;
-static char bleName[33] = "TC-LTC-MASTER";
+static char bleName[33] = "TC-WL-HDMI";
 
-int bleGetMode() { return BLE_MASTER; }
+int bleGetMode() { return TCWL_HDMI; }
 void bleSetMode(int) {}
 
 void bleTimecodeInit() {
     blePrefs.begin("ble", true);
-    String saved = blePrefs.getString("name", "TC-LTC-MASTER");
+    String saved = blePrefs.getString("name", "TC-WL-HDMI");
     blePrefs.end();
     strncpy(bleName, saved.c_str(), sizeof(bleName) - 1);
     bleName[sizeof(bleName) - 1] = '\0';

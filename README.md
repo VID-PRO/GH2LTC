@@ -1,6 +1,6 @@
-# [VID-PRO](https://www.vid-pro.de) GH2LTC
+# [VID-PRO](https://www.vid-pro.de) TC-WL
 
-Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-12M LTC audio. Three PlatformIO environments: **master** (Waveshare ESP32-P4-WIFI6, HDMI receiver, BLE server), **slave** (ESP32-C3 Super Mini, BLE client, standalone LTC output), and **clap** (ESP32-C3, BLE client, LED matrix only). The master has no LED matrix — it uses a different GPIO layout from the slave boards.
+Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-12M LTC audio. Three PlatformIO environments: **TC-WL-HDMI** (Waveshare ESP32-P4-WIFI6, HDMI receiver, BLE server), **TC-WL-LTC** (ESP32-C3 Super Mini, dual-role: BLE server with LTC input or BLE client with LTC output), and **TC-WL-CLAP** (ESP32-C3, BLE client, LED matrix only). TC-WL-HDMI has no LED matrix — it uses a different GPIO layout from the LTC/CLAP boards.
 
 ---
 
@@ -12,12 +12,12 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 | **LTC generation** | Standalone SMPTE-12M biphase-mark encoder, esp_timer-driven, independent of I2C polling |
 | **Frame rates** | Auto-detected from HDMI (24/25/30/50/60 fps) or manual via web UI |
 | **RTC fallback** | Optional DS3231 preserves accurate time across power cycles with frame interpolation |
-| **LED matrix (slave/clap)** | 8 daisy-chained MAX7219 8×8 modules (64×8 px), software SPI; runtime toggle in web UI; not available on master |
+| **LED matrix (LTC/CLAP)** | 8 daisy-chained MAX7219 8×8 modules (64×8 px), software SPI; runtime toggle in web UI; not available on HDMI |
 | **OLED display (optional)** | 128×64 SSD1306 on shared I2C bus shows timecode + HDMI lock status |
 | **Web UI** | Fullscreen dark-teal SPA: timecode display, Auto/fixed FPS config, jam sync, brightness slider, matrix on/off, WiFi config |
 | **WiFi** | AP on boot; auto-STA connect to saved network; AP re-enables on disconnect |
 | **Reverse-engineer mode** | Dumps InfoFrame packets over serial to find GH5's exact timecode byte layout |
-| **BLE wireless sync** | Master advertises timecode via BLE notify; slave/clap scan by service UUID, subscribe to notifications, run local LTC + display |
+| **BLE wireless sync** | HDMI advertises timecode via BLE notify; LTC/CLAP scan by service UUID, subscribe to notifications, run local LTC + display |
 
 ---
 
@@ -25,7 +25,7 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 
 ### Bill of Materials
 
-#### Master (Waveshare ESP32-P4-WIFI6)
+#### TC-WL-HDMI (Waveshare ESP32-P4-WIFI6)
 | Component | Notes | Buy |
 |-----------|-------|-----|
 | **Waveshare ESP32-P4-WIFI6** | ESP32-P4 + ESP32-C6 companion for WiFi/BLE | [waveshare.com](https://www.waveshare.com) |
@@ -38,7 +38,7 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 | **R3, R4: 10kΩ** | LTC level pad | — |
 | **CR2032 coin cell** | Backup for DS3231 | any electronics supplier |
 
-#### Slave (ESP32-C3 Super Mini)
+#### TC-WL-LTC (ESP32-C3 Super Mini)
 | Component | Notes |
 |-----------|-------|
 | **ESP32-C3 Super Mini** | 400 MHz RISC-V, USB-C |
@@ -46,7 +46,7 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 | **DS3231 RTC (optional)** | I2C |
 | **128×64 OLED SSD1306 (optional)** | I2C |
 | **3.5mm TRS jack** | LTC audio output |
-| **Passives** | Same RC filter as master |
+| **Passives** | Same RC filter as HDMI board |
 
 ### Pin Assignments
 
@@ -57,7 +57,7 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 | SDA | 7 | 4 | TC358743 `0x0F` + OLED `0x3C` + DS3231 `0x68` |
 | SCL | 8 | 5 | shared |
 
-> MAX7219 pin table (slave/clap only): DIN=GPIO2, CS=GPIO3, CLK=GPIO10
+#### MAX7219 pin table (LTC/CLAP only): DIN=GPIO2, CS=GPIO3, CLK=GPIO10
 
 #### LTC Output
 
@@ -79,24 +79,24 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 
 | Env | Board | Role | BLE | Platform |
 |-----|-------|------|-----|----------|
-| `slave` | ESP32-C3 Super Mini | BLE client, LTC + OLED + RTC | ✓ (native C3) | `pioarduino/platform-espressif32`† |
-| `clap` | ESP32-C3 Super Mini | BLE client, LED matrix only | ✓ (native C3) | `pioarduino/platform-espressif32`† |
-| `master` | ESP32-P4-WIFI6 | HDMI receiver, BLE server | via C6 coprocessor‡ (ESP-Hosted SDIO) | `pioarduino/platform-espressif32`† |
+| `TC-WL-LTC` | ESP32-C3 Super Mini | Dual-role: master (BLE server + LTC input) or slave (BLE client + LTC output), OLED + RTC, physical buttons, OLED menu | ✓ (native C3) | `pioarduino/platform-espressif32`† |
+| `TC-WL-CLAP` | ESP32-C3 Super Mini | BLE client, LED matrix only | ✓ (native C3) | `pioarduino/platform-espressif32`† |
+| `TC-WL-HDMI` | ESP32-P4-WIFI6 | HDMI receiver, BLE server | via C6 coprocessor‡ (ESP-Hosted SDIO) | `pioarduino/platform-espressif32`† |
 
-† Pinned to GitHub: `https://github.com/pioarduino/platform-espressif32.git` (needed for ESP32-P4 `esp_timer` API compatibility; also used by slave/clap for consistency)
+† Pinned to GitHub: `https://github.com/pioarduino/platform-espressif32.git` (needed for ESP32-P4 `esp_timer` API compatibility; also used by LTC/CLAP for consistency)
 ‡ ESP32-P4 has no native BLE controller. The Waveshare board's ESP32-C6 companion provides WiFi/BLE over SDIO via ESP-Hosted firmware (pre-flashed). All BLE code uses preprocessor guards (`SOC_BLE_SUPPORTED \|\| CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE`) to compile correctly on P4.
 
 ### Building
 
 ```bash
-# Slave (ESP32-C3, full I/O)
-pio run -e slave -t upload
+# LTC (ESP32-C3, full I/O)
+pio run -e TC-WL-LTC -t upload
 
-# Clap (ESP32-C3, LED matrix only)
-pio run -e clap -t upload
+# CLAP (ESP32-C3, LED matrix only)
+pio run -e TC-WL-CLAP -t upload
 
-# Master (ESP32-P4-WIFI6)
-pio run -e master -t upload
+# HDMI (ESP32-P4-WIFI6)
+pio run -e TC-WL-HDMI -t upload
 ```
 
 Monitor:
@@ -109,18 +109,18 @@ pio device monitor -b 115200
 ```
 platformio.ini
 src/config.h                   pin assignments, feature toggles (common base)
-src/config_slave.h             -include for slave env
-src/config_clap.h              -include for clap env
-src/config_master.h            -include for master env
-src/main.cpp                   compile-time dispatch: master/slave paths
+src/config_tcwl_ltc.h             -include for TC-WL-LTC env
+src/config_tcwl_clap.h            -include for TC-WL-CLAP env
+src/config_tcwl_hdmi.h            -include for TC-WL-HDMI env
+src/main.cpp                   compile-time dispatch: TC-WL-HDMI/LTC/CLAP paths
 src/webui/                     WiFi AP/STA, HTTP server, NVS, embedded JS/CSS/HTML
 src/hdmi/                      TC358743 I2C driver + register map + GH5 timecode decoder
 src/ltc/                       esp_timer-based SMPTE-12M LTC generator
 src/matrix/                    MAX7219 64×8 framebuffer driver
 src/oled/                      optional SSD1306 via U8g2
 src/rtc/                       optional DS3231 RTC driver
-src/timecode/                  BLE master (advertise/notify) & slave (scan/select/connect/subscribe)
-3DPrints/                     STL/3MF enclosures for master (ESP32-P4) and clap (ESP32-C3 + LED matrix)
+src/timecode/                  BLE HDMI (advertise/notify) & LTC (scan/select/connect/subscribe)
+3DPrints/                     STL/3MF enclosures for TC-WL-HDMI (ESP32-P4) and TC-WL-CLAP (ESP32-C3 + LED matrix)
 ```
 
 ---
@@ -129,7 +129,7 @@ src/timecode/                  BLE master (advertise/notify) & slave (scan/selec
 
 | Scenario | Behavior |
 |----------|----------|
-| No WiFi configured | Opens AP with default SSID (master: `TC-MASTER-XXXX`, slave: `TC-SLAVE-XXXX`, clap: `TC-CLAP-XXXX`), open network, `192.168.4.1` |
+| No WiFi configured | Opens AP with default SSID (HDMI: `TC-WL-HDMI-XXXX`, LTC: `TC-WL-LTC-XXXX`, CLAP: `TC-WL-CLAP-XXXX`), open network, `192.168.4.1` |
 | Saved credentials exist | Connects as STA on boot; AP auto-disables on connect |
 | STA disconnected >5 s | AP re-enabled for reconfiguration |
 
@@ -144,19 +144,20 @@ Open `http://192.168.4.1` (AP mode) or the ESP's STA IP. The header displays a c
 | **Timecode display** | Fullscreen `dd:hh:mm:ss:ff` with color-coded status dot (green=HDMI, orange=RTC, gray=free) |
 | **FPS config** | Auto (re-detect from HDMI) or fixed 24/25/30/50/60, drop-frame toggle, saved to NVS |
 | **Jam sync** | Set timecode manually (dd:hh:mm:ss:ff) |
-| **Brightness (slave/clap)** | Slider for MAX7219 intensity (0–15), saved to NVS |
-| **Matrix toggle (slave/clap)** | Enable/disable LED matrix display at runtime, saved to NVS |
+| **Brightness (LTC/CLAP)** | Slider for MAX7219 intensity (0–15), saved to NVS |
+| **Matrix toggle (LTC/CLAP)** | Enable/disable LED matrix display at runtime, saved to NVS |
 | **WiFi config** | SSID/password input, saved to NVS, forget option |
-| **BLE (master)** | Change broadcast name, view connected slave count, disconnect all |
-| **BLE (slave/clap)** | Scan for master devices (name + address), tap to connect, view connected master name, BLE connection indicator (bottom-left dots) on LED matrix |
+| **BLE (HDMI)** | Change broadcast name, view connected client count, disconnect all |
+| **BLE (LTC master)** | Same server controls as HDMI (change server name, view/disconnect clients), plus LTC decoder status |
+| **BLE (LTC/CLAP slave)** | Scan for HDMI or LTC-master server devices (name + address), tap to connect, view server name, BLE connection indicator (bottom-left dots) on LED matrix |
 
 ---
 
 ## Configuration Defaults
 
-| Setting | Master (HDMI + BLE server, no matrix) | Slave (BLE client, no HDMI) | Clap (LED matrix only) |
-|---------|---------------------------|-----------------------------|------------------------|
-| WiFi AP SSID | `TC-MASTER-` + last 4 MAC digits | `TC-SLAVE-` + last 4 MAC digits | `TC-CLAP-` + last 4 MAC digits |
+| Setting | HDMI (BLE server, no matrix) | LTC (dual-role master/slave, no HDMI) | CLAP (LED matrix only) |
+|---------|------------------------------|----------------------------|------------------------|
+| **WiFi AP SSID** | `TC-WL-HDMI-` + last 4 MAC digits | `TC-WL-LTC-` + last 4 MAC digits | `TC-WL-CLAP-` + last 4 MAC digits |
 | FPS | Auto (re-detect) | Auto (re-detect†) | Auto (re-detect†) |
 | Drop frame | Off | Off | Off |
 | RTC | Optional (DS3231) | Optional (DS3231) | Optional (DS3231) |
@@ -165,22 +166,25 @@ Open `http://192.168.4.1` (AP mode) or the ESP's STA IP. The header displays a c
 | Matrix brightness | N/A | 4 | 4 |
 | BLE indicator (matrix) | N/A | 3-pixel dot (bottom-left) when connected | 3-pixel dot (bottom-left) when connected |
 | LTC output pin | GPIO6 | GPIO6 | GPIO6 |
+| LTC input pin (master) | — | GPIO7 | — |
+| Physical buttons + OLED menu | — | GPIO 8/9/18/19 (UP/DOWN/OK/CANCEL) | — |
 | TC_RESET_PIN | -1 (unused) | — | — |
-| Reverse-engineer mode | 0 (set to 1 in `config_master.h`) | — | — |
-| BLE role | Master (advertise + notify) | Slave (scan + subscribe) | Slave (scan + subscribe) |
+| Reverse-engineer mode | 0 (set to 1 in `config_tcwl_hdmi.h`) | — | — |
+| BLE role | Server (advertise + notify) | Configurable: master (server + LTC input) or slave (client + LTC output) | Client (scan + subscribe) |
 
-† Relies on HDMI frame-sync on master; no-op on slave/clap (falls back to configured FPS).
+† Relies on HDMI frame-sync on HDMI; no-op on LTC/CLAP (falls back to configured FPS).
 
 ---
 
-## BLE Wireless Slave Sync
+## BLE Wireless Sync
 
-A custom 128-bit BLE service (`9a6f0001-...`) transfers timecode from master to slave as 5-byte notifications (dd, hh, mm, ss, ff):
+A custom 128-bit BLE service (`9a6f0001-...`) transfers timecode from HDMI to LTC/CLAP as 5-byte notifications (dd, hh, mm, ss, ff):
 
-- **Master**: advertises the service, sends a notification on every frame tick via `bleTimecodeUpdate()`. Broadcast name configurable via web UI; disconnect button removes all connected slaves.
-- **Slave**: scans for devices offering the service (showing name + address), taps one to connect. On receiving a timecode packet it jams the local `LtcEncoder` in real time. The web UI displays the connected master's device name.
+- **HDMI**: advertises the service, sends a notification on every frame tick via `bleTimecodeUpdate()`. Broadcast name configurable via web UI; disconnect button removes all connected clients.
+- **TC-WL-LTC (master)**: same BLE server role as HDMI — receives LTC audio via GPIO 7 decoder, advertises timecode over BLE. No HDMI hardware needed; can act as a standalone LTC-to-BLE bridge for slave units.
+- **LTC/CLAP (slave)**: scans for devices offering the service (showing name + address), taps one to connect. On receiving a timecode packet it jams the local `LtcEncoder` in real time. The web UI displays the connected server's device name.
 
-Slave/clap run their own independent LTC generator, MAX7219 matrix display (clap shows 3-pixel BLE indicator at bottom-left when connected), and web UI. The master has no MAX7219 hardware and relies on the OLED for status display.
+LTC hardware runs its own LTC generator, MAX7219 matrix, OLED, web UI, and physical buttons with on-device menu. In master mode it decodes LTC from GPIO 7 and acts as a BLE timecode server; in slave mode it receives timecode via BLE and generates standalone LTC output. CLAP is client-only (no LTC input/output, LED matrix only). The HDMI board has no MAX7219 hardware and relies on the OLED for status display.
 
 ---
 
@@ -210,7 +214,7 @@ The TC358743 only supports HDMI 1.4 up to 1080p. Set the GH5's "HDMI Rec Output"
 
 **Test with a known-good HDMI source** (laptop, PC) before blaming the GH5. If both produce `TMDS=0`, the TC358743 breakout board is the problem, not the camera.
 
-**WebUI JS crashes on clap** — if the config drawer shows `—` for BLE status and the name input stays empty, the browser may be loading a cached version of the page from before the JS `typeof` guard fix. Hard-refresh (Cmd+Shift+R) to load the updated script. The issue was a `ReferenceError` on `oledToggle`/`ltcToggle` (excluded by `#ifndef BLE_CLAP`) that propagated out of an IIFE and halted the entire `<script>` block before `pollBleSlave()` could register.
+**WebUI JS crashes on CLAP** — if the config drawer shows `—` for BLE status and the name input stays empty, the browser may be loading a cached version of the page from before the JS `typeof` guard fix. Hard-refresh (Cmd+Shift+R) to load the updated script. The issue was a `ReferenceError` on `oledToggle`/`ltcToggle` (excluded by `#ifndef TCWL_CLAP`) that propagated out of an IIFE and halted the entire `<script>` block before `pollBleLtc()` could register.
 
 ---
 
@@ -219,17 +223,65 @@ The TC358743 only supports HDMI 1.4 up to 1080p. Set the GH5's "HDMI Rec Output"
 ### LTC Output
 
 ```
-GPIO6
+GPIO6 (LTC_OUT_PIN)
   └───[ R1: 1k ]───┬───[ C2: 1µF ]───┬─── TRS TIP
                     │                 │
-                 [ C1: 4.7nF ]    [ R3: 10k ]
+                 [ C1: 4.7nF ]    [ R2: 20k ]
                     │                 │
-                   GND               └─── TRS RING (tie to TIP for mono)
+                   GND               │
                                      │
-                                [ R4: 10k ]
-                                     │
-GND ─────────────────────────────────┴─── TRS SLEEVE
+GND ────────────────────────────────┴─── TRS SLEEVE
 ```
+
+### LTC Input (TC-WL-LTC master mode)
+
+Connect a 3.3V-tolerant LTC source (e.g., another TC-WL's LTC output or a
+professional LTC generator) to GPIO 7.  Because most LTC sources produce
+audio-level signals (±1 Vpp), a simple NPN transistor pre-amplifier is needed
+to convert the signal to clean 0/3.3 V logic for the ESP32-C3 GPIO.
+
+```
+                    +3.3V
+                      │
+                  [R5] 10k
+                      │
+                      ├── GPIO 7
+                      │
+                  C ──┤
+                      │
+    ──────────┬──[C3]── B ────<   BC547 (NPN)
+              │       │
+              │   E ──┤
+              │       │
+              │     GND
+              │
+          [R6] 100k
+              │
+             GND
+              ▲
+              │
+TRS TIP ──────┘  10µF DC block
+
+TRS SLEEVE ────── GND
+```
+
+| Part | Value | Purpose |
+|------|-------|---------|
+| C3 | 10 µF electrolytic | DC block — removes bias from incoming audio |
+| R5 | 10 kΩ | Pull-up to 3.3 V (holds GPIO high when transistor off) |
+| R6 | 100 kΩ | Base pulldown (keeps transistor off with no signal) |
+| Q1 | BC547 (NPN) | Switches on positive half-cycles of LTC signal |
+
+**Signal path:** Audio from TRS TIP passes through C3 to the base of Q1.
+When the input rises above ≈0.7 V, Q1 turns on, pulling GPIO 7 low.
+When below threshold, Q1 turns off, and R5 pulls GPIO 7 high.
+The circuit inverts and clips the LTC signal — the biphase-mark transitions
+are preserved and the ESP32-C3 ISR triggers on both edges, so polarity does
+not matter.
+
+For a simpler (but less robust) test, a direct connection may work if the
+LTC source swings rail-to-rail (0–3.3 V).  Most professional LTC outputs
+are 1 Vpp and *require* the amplifier above.
 
 ---
 

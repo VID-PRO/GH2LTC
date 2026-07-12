@@ -22,14 +22,14 @@ jobs:
         run: pip install platformio
 
       - name: Build firmware (all envs)
-        run: pio run -e master -e slave -e clap
+        run: pio run -e TC-WL-HDMI -e TC-WL-LTC -e TC-WL-CLAP
 
       - name: Upload firmware binaries to release
         if: github.event_name == 'release'
         run: |
           mkdir -p upload
 
-          for env in master slave clap; do
+          for env in TC-WL-HDMI TC-WL-LTC TC-WL-CLAP; do
             cp ".pio/build/$env/firmware.bin"    "upload/${env}_firmware.bin"
             cp ".pio/build/$env/bootloader.bin"  "upload/${env}_bootloader.bin"
             cp ".pio/build/$env/partitions.bin"  "upload/${env}_partitions.bin"
@@ -39,9 +39,9 @@ jobs:
           gh release view "${{ github.ref_name }}" --json body --jq .body > existing-notes.md
           {
             printf '\n---\n\n## Flashing\n\n'
-            printf '### Master (ESP32-P4-WIFI6)\n```\nesptool.py --chip esp32p4 --port /dev/ttyUSB0 write_flash \\\n  0x0 .pio/build/master/bootloader.bin \\\n  0x8000 .pio/build/master/partitions.bin \\\n  0x10000 .pio/build/master/firmware.bin\n```\n\n'
-            printf '### Slave (ESP32-C3)\n```\nesptool.py --chip esp32c3 --port /dev/ttyUSB0 write_flash \\\n  0x0 .pio/build/slave/bootloader.bin \\\n  0x8000 .pio/build/slave/partitions.bin \\\n  0x10000 .pio/build/slave/firmware.bin\n```\n\n'
-            printf '### Clap (ESP32-C3, LED matrix only)\n```\nesptool.py --chip esp32c3 --port /dev/ttyUSB0 write_flash \\\n  0x0 .pio/build/clap/bootloader.bin \\\n  0x8000 .pio/build/clap/partitions.bin \\\n  0x10000 .pio/build/clap/firmware.bin\n```\n\n'
+            printf '### TC-WL-HDMI (ESP32-P4-WIFI6)\n```\nesptool.py --chip esp32p4 --port /dev/ttyUSB0 write_flash \\\n  0x0 .pio/build/TC-WL-HDMI/bootloader.bin \\\n  0x8000 .pio/build/TC-WL-HDMI/partitions.bin \\\n  0x10000 .pio/build/TC-WL-HDMI/firmware.bin\n```\n\n'
+            printf '### TC-WL-LTC (ESP32-C3)\n```\nesptool.py --chip esp32c3 --port /dev/ttyUSB0 write_flash \\\n  0x0 .pio/build/TC-WL-LTC/bootloader.bin \\\n  0x8000 .pio/build/TC-WL-LTC/partitions.bin \\\n  0x10000 .pio/build/TC-WL-LTC/firmware.bin\n```\n\n'
+            printf '### TC-WL-CLAP (ESP32-C3, LED matrix only)\n```\nesptool.py --chip esp32c3 --port /dev/ttyUSB0 write_flash \\\n  0x0 .pio/build/TC-WL-CLAP/bootloader.bin \\\n  0x8000 .pio/build/TC-WL-CLAP/partitions.bin \\\n  0x10000 .pio/build/TC-WL-CLAP/firmware.bin\n```\n\n'
             printf 'Replace `/dev/ttyUSB0` with your port (`COM3` on Windows, `/dev/cu.usbmodem*` on macOS).\n'
           } >> existing-notes.md
           gh release edit "${{ github.ref_name }}" --notes-file existing-notes.md
@@ -53,12 +53,12 @@ jobs:
         with:
           name: firmware
           path: |
-            .pio/build/master/firmware.bin
-            .pio/build/master/bootloader.bin
-            .pio/build/master/partitions.bin
-            .pio/build/slave/firmware.bin
-            .pio/build/slave/bootloader.bin
-            .pio/build/slave/partitions.bin
-            .pio/build/clap/firmware.bin
-            .pio/build/clap/bootloader.bin
-            .pio/build/clap/partitions.bin
+            .pio/build/TC-WL-HDMI/firmware.bin
+            .pio/build/TC-WL-HDMI/bootloader.bin
+            .pio/build/TC-WL-HDMI/partitions.bin
+            .pio/build/TC-WL-LTC/firmware.bin
+            .pio/build/TC-WL-LTC/bootloader.bin
+            .pio/build/TC-WL-LTC/partitions.bin
+            .pio/build/TC-WL-CLAP/firmware.bin
+            .pio/build/TC-WL-CLAP/bootloader.bin
+            .pio/build/TC-WL-CLAP/partitions.bin

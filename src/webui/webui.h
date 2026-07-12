@@ -39,6 +39,11 @@ public:
     uint8_t brightness() const { return _brightness; }
     bool autoFps() const { return _autoFps; }
 
+    void setOledEnabled(bool en);
+    void setLtcEnabled(bool en);
+    void setMatrixEnabled(bool en);
+    void setBrightness(uint8_t val);
+
     // Accessors for the config dump / web UI
     IPAddress apIp() const { return _apIp; }
     IPAddress staIp() const { return _staIp; }

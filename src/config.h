@@ -15,6 +15,15 @@
 // LTC audio output pin (goes to your RC filter -> 3.5mm TRS -> LTC input)
 #define LTC_OUT_PIN      6
 
+// LTC audio input pin (LTC signal from external source, TC-WL-LTC master mode only)
+#define LTC_IN_PIN       7
+
+// OLED menu push-buttons (momentary to GND, internal pull-up enabled)
+#define BTN_UP_PIN       8
+#define BTN_DOWN_PIN     9
+#define BTN_OK_PIN       18
+#define BTN_CANCEL_PIN   19
+
 // TC358743 RESETN has internal pull-up — no GPIO needed
 
 // ---------------------------------------------------------------------------
@@ -70,7 +79,7 @@
 // Web UI (WiFi AP + optional STA) configuration
 // ---------------------------------------------------------------------------
 #define WEBUI_ENABLE        1
-#define WEBUI_AP_SSID       "TC-LTC-GENERATOR"
+#define WEBUI_AP_SSID       "TC-WL-AP"
 #define WEBUI_AP_PASSWORD   nullptr         // nullptr = open network
 
 // Optional: connect to an existing WiFi network (STA mode) so the web UI
@@ -79,5 +88,5 @@
 #define WEBUI_STA_PASSWORD  ""
 
 // ---------------------------------------------------------------------------
-// Operating mode (master only — see config_master.h)
+// Operating mode (HDMI only — see config_tcwl_hdmi.h)
 // ---------------------------------------------------------------------------

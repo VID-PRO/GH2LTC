@@ -1,3 +1,3 @@
 #pragma once
 #include "config.h"
-#define BLE_SLAVE 1
+#define TCWL_LTC 1

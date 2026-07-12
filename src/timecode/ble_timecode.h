@@ -11,12 +11,13 @@ extern const BLEUUID bleTimecodeNameCharUUID;
 // Runtime mode management (always available)
 int bleGetMode();
 void bleSetMode(int mode);
-#define BLE_MODE_MASTER 1
-#define BLE_MODE_SLAVE  2
+#define TCWL_MODE_HDMI 1
+#define TCWL_MODE_LTC  2
+#define TCWL_MODE_LTC_MASTER 3
 
 void bleTimecodeInit();
 
-// Master-mode functions (no-ops in slave mode)
+// HDMI-mode functions (no-ops in LTC/CLAP mode)
 void bleTimecodeUpdate(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff);
 void bleTimecodeSetName(const char *name);
 const char *bleTimecodeGetName();
@@ -32,7 +33,7 @@ typedef struct {
 
 uint8_t bleTimecodeGetPeers(BlePeerInfo *peers, uint8_t maxPeers);
 
-// Slave-mode functions (no-ops in master mode)
+// LTC/CLAP-mode functions (no-ops in HDMI mode)
 typedef void (*BleTimecodeCb)(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff);
 void bleTimecodeSetCallback(BleTimecodeCb cb);
 void bleTimecodePoll();
