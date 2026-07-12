@@ -75,23 +75,16 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 
 ## Software
 
-### Required Libraries (`platformio.ini` `lib_deps`)
-
-| Library | Version |
-|---------|---------|
-| `Wire` | built-in |
-| `U8g2` | latest |
-| `MD_MAX72XX` | latest |
-
 ### Environments
 
 | Env | Board | Role | BLE | Platform |
 |-----|-------|------|-----|----------|
-| `slave` | ESP32-C3 DevKitC-02 | BLE client, LTC + OLED + RTC | ✓ (native C3) | `espressif32` |
-| `clap` | ESP32-C3 Super Mini | BLE client, LED matrix only | ✓ (native C3) | `espressif32` |
-| `master` | ESP32-P4-WIFI6 | HDMI receiver, BLE server | via C6 coprocessor† (ESP-Hosted SDIO) | `pioarduino/platform-espressif32` (GitHub) |
+| `slave` | ESP32-C3 Super Mini | BLE client, LTC + OLED + RTC | ✓ (native C3) | `pioarduino/platform-espressif32`† |
+| `clap` | ESP32-C3 Super Mini | BLE client, LED matrix only | ✓ (native C3) | `pioarduino/platform-espressif32`† |
+| `master` | ESP32-P4-WIFI6 | HDMI receiver, BLE server | via C6 coprocessor‡ (ESP-Hosted SDIO) | `pioarduino/platform-espressif32`† |
 
-† ESP32-P4 has no native BLE controller. The Waveshare board's ESP32-C6 companion provides WiFi/BLE over SDIO via ESP-Hosted firmware (pre-flashed). All BLE code uses preprocessor guards (`SOC_BLE_SUPPORTED || CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE`) to compile correctly on P4.
+† Pinned to GitHub: `https://github.com/pioarduino/platform-espressif32.git` (needed for ESP32-P4 `esp_timer` API compatibility; also used by slave/clap for consistency)
+‡ ESP32-P4 has no native BLE controller. The Waveshare board's ESP32-C6 companion provides WiFi/BLE over SDIO via ESP-Hosted firmware (pre-flashed). All BLE code uses preprocessor guards (`SOC_BLE_SUPPORTED \|\| CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE`) to compile correctly on P4.
 
 ### Building
 
