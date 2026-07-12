@@ -55,8 +55,8 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 | **I2C SDA** | GPIO 7 | GPIO 4 | GPIO 4 |
 | **I2C SCL** | GPIO 8 | GPIO 5 | GPIO 5 |
 | **I2C devices** | TC358743 `0x0F`, OLED `0x3C`, DS3231 `0x68` | OLED `0x3C`, DS3231 `0x68` | OLED `0x3C` |
-| **MAX7219 DIN** | — | — (GPIO 2 used for button) | GPIO 2 |
-| **MAX7219 CS** | — | — (GPIO 3 used for button) | GPIO 3 |
+| **MAX7219 DIN** | — | — | GPIO 2 |
+| **MAX7219 CS** | — | — | GPIO 3 |
 | **MAX7219 CLK** | — | — | GPIO 10 |
 | **LTC output** | GPIO 6 | GPIO 6 | GPIO 6 |
 | **LTC input (master)** | — | GPIO 7 | — |
@@ -161,7 +161,7 @@ Open `http://192.168.4.1` (AP mode) or the ESP's STA IP. The header displays a c
 | Drop frame | Off | Off | Off |
 | RTC | Optional (DS3231) | Optional (DS3231) | Optional (DS3231) |
 | OLED | Optional (SSD1306) | Optional (SSD1306) | Optional (SSD1306) — main screen only (no buttons) |
-| MAX7219 matrix | Disabled (no hardware) | Disabled (GPIO conflict with buttons) | Enabled by default |
+| MAX7219 matrix | Disabled (no hardware) | Disabled (no hardware) | Enabled by default |
 | Matrix brightness | N/A | N/A | 4 |
 | LTC output pin | GPIO6 | GPIO6 | GPIO6 |
 | LTC input pin (master) | — | GPIO7 | — |
