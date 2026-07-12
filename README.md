@@ -1,6 +1,6 @@
 # [VID-PRO](https://www.vid-pro.de) TC-WL
 
-Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-12M LTC audio. Three PlatformIO environments: **TC-WL-HDMI** (Waveshare ESP32-P4-WIFI6, HDMI receiver, BLE server), **TC-WL-LTC** (Seeed Studio XIAO ESP32-C3, dual-role: BLE server with LTC input or BLE client with LTC output), and **TC-WL-CLAP** (ESP32-C3, BLE client, LED matrix only). TC-WL-HDMI has no LED matrix — it uses a different GPIO layout from the LTC/CLAP boards.
+Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-12M LTC audio. Three PlatformIO environments: **TC-WL-HDMI** (Waveshare ESP32-P4-WIFI6, HDMI receiver, BLE server), **TC-WL-LTC** (Seeed Studio XIAO ESP32-C3, dual-role: BLE server with LTC input or BLE client with LTC output), and **TC-WL-CLAP** (ESP32-C3, BLE client, LED matrix + OLED). TC-WL-HDMI has no LED matrix — it uses a different GPIO layout from the LTC/CLAP boards.
 
 ---
 
@@ -13,7 +13,7 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 | **Frame rates** | Auto-detected from HDMI (24/25/30/50/60 fps) or manual via web UI |
 | **RTC fallback** | Optional DS3231 preserves accurate time across power cycles with frame interpolation |
 | **LED matrix (LTC/CLAP)** | 8 daisy-chained MAX7219 8×8 modules (64×8 px), software SPI; runtime toggle in web UI; not available on HDMI |
-| **OLED display (optional)** | 128×64 SSD1306 on shared I2C bus: device name, battery gauge + runtime, big timecode, lock/BLE/master indicator, FPS mode/rate, LTC mode — controlled via 4 physical buttons on HDMI/LTC; CLAP shows main screen only (no buttons) |
+| **OLED display (optional)** | 128×64 SSD1306 on shared I2C bus: device name, battery gauge + runtime, big timecode, master/`F`/lock/`B` indicator, FPS mode/rate, LTC mode — controlled via 4 physical buttons on HDMI/LTC; CLAP shows main screen only (no buttons) |
 | **Web UI** | Fullscreen dark-teal SPA: timecode display, Auto/fixed FPS config, jam sync, brightness slider, matrix on/off, WiFi config |
 | **WiFi** | AP on boot; auto-STA connect to saved network; AP re-enables on disconnect |
 | **Reverse-engineer mode** | Dumps InfoFrame packets over serial to find GH5's exact timecode byte layout |
@@ -77,7 +77,7 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 | Env | Board | Role | BLE | Platform |
 |-----|-------|------|-----|----------|
 | `TC-WL-LTC` | Seeed Studio XIAO ESP32-C3 | Dual-role: master (BLE server + LTC input) or slave (BLE client + LTC output), OLED + RTC, physical buttons, OLED menu | ✓ (native C3) | `pioarduino/platform-espressif32`† |
-| `TC-WL-CLAP` | ESP32-C3 Super Mini | BLE client, LED matrix + OLED display | ✓ (native C3) | `pioarduino/platform-espressif32`† |
+| `TC-WL-CLAP` | ESP32-C3 Super Mini | BLE client, LED matrix + OLED, no physical buttons | ✓ (native C3) | `pioarduino/platform-espressif32`† |
 | `TC-WL-HDMI` | ESP32-P4-WIFI6 | HDMI receiver, BLE server, physical buttons + OLED menu | via C6 coprocessor‡ (ESP-Hosted SDIO) | `pioarduino/platform-espressif32`† |
 
 † Pinned to GitHub: `https://github.com/pioarduino/platform-espressif32.git` (needed for ESP32-P4 `esp_timer` API compatibility; also used by LTC/CLAP for consistency)
@@ -146,7 +146,7 @@ Open `http://192.168.4.1` (AP mode) or the ESP's STA IP. The header displays a c
 | **WiFi config** | SSID/password input, saved to NVS, forget option |
 | **BLE (HDMI)** | Change broadcast name, view connected client count, disconnect all |
 | **BLE (LTC master)** | Same server controls as HDMI (change server name, view/disconnect clients), plus LTC decoder status |
-| **BLE (LTC/CLAP slave)** | Scan for HDMI or LTC-master server devices (name + address), tap to connect, view server name, BLE connection indicator (bottom-left dots) on LED matrix |
+| **BLE (LTC/CLAP slave)** | Scan for HDMI or LTC-master server devices (name + address), tap to connect, view server name, BLE status on OLED (`F` = not synced, `B` = synced) |
 
 ---
 
@@ -163,7 +163,7 @@ Open `http://192.168.4.1` (AP mode) or the ESP's STA IP. The header displays a c
 | OLED | Optional (SSD1306) | Optional (SSD1306) | Optional (SSD1306) — main screen only (no buttons) |
 | MAX7219 matrix | Disabled (no hardware) | Off by default | Enabled by default |
 | Matrix brightness | N/A | 4 | 4 |
-| BLE indicator (matrix) | N/A | 3-pixel dot (bottom-left) when connected | 3-pixel dot (bottom-left) when connected |
+| BLE indicator (matrix) | N/A | — | — |
 | LTC output pin | GPIO6 | GPIO6 | GPIO6 |
 | LTC input pin (master) | — | GPIO7 | — |
 | Physical buttons + OLED menu | GPIO 10/9/2/3 (UP/DOWN/OK/CANCEL) | GPIO 8/9/2/3 (UP/DOWN/OK/CANCEL) | — |
@@ -188,11 +188,11 @@ The 128×64 SSD1306 display is organized in three fixed zones (HDMI, LTC, and CL
 ├─ Bottom line (6×10, 4 bordered boxes) ──────────────┤
 │ [H] [A] [25fps] [LTC OUT]                          │
 │  └─ master indicator   └─ FPS mode/rate  └─ LTC     │
-│  or lock / BLE icon                                 │
+│  or F / lock / B                                     │
 └──────────────────────────────────────────────────────┘
 ```
 
-* **Box 1 (14 px):** Shows `H` (HDMI master), `L` (LTC master mode), lock icon (LTC slave, BLE synced), or BLE icon (LTC slave, not synced)
+* **Box 1 (14 px):** Shows `H` (HDMI master), `L` (LTC master mode), `F` (CLAP/LTC slave, not synced), lock icon (LTC slave, BLE synced), or `B` (CLAP, BLE synced)
 * **Box 2 (16 px):** `A` (auto FPS) or `M` (manual FPS)
 * **Box 3 (42 px):** Framerate — `24fps`, `25fps`, `30fps`, `50fps`, `60fps`
 * **Box 4 (50 px):** LTC mode — `LTC OUT` or `LTC IN`
@@ -217,7 +217,7 @@ A custom 128-bit BLE service (`9a6f0001-...`) transfers timecode from HDMI to LT
 - **TC-WL-LTC (master)**: same BLE server role as HDMI — receives LTC audio via GPIO 7 decoder, advertises timecode over BLE. No HDMI hardware needed; can act as a standalone LTC-to-BLE bridge for slave units.
 - **LTC/CLAP (slave)**: scans for devices offering the service (showing name + address), taps one to connect. On receiving a timecode packet it jams the local `LtcEncoder` in real time. The web UI displays the connected server's device name.
 
-LTC hardware runs its own LTC generator, MAX7219 matrix, OLED, web UI, and physical buttons with on-device menu. In master mode it decodes LTC from GPIO 7 and acts as a BLE timecode server; in slave mode it receives timecode via BLE and generates standalone LTC output. CLAP is client-only (no LTC input/output, LED matrix + OLED main screen). The HDMI board has no MAX7219 hardware and uses the OLED for status display plus a menu system controlled by four physical buttons.
+LTC hardware runs its own LTC generator, MAX7219 matrix, OLED, web UI, and physical buttons with on-device menu. In master mode it decodes LTC from GPIO 7 and acts as a BLE timecode server; in slave mode it receives timecode via BLE and generates standalone LTC output. CLAP is client-only (no LTC input/output, LED matrix + OLED main screen, no physical buttons). The HDMI board has no MAX7219 hardware and uses the OLED for status display plus a menu system controlled by four physical buttons.
 
 ---
 
