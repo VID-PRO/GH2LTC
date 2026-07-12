@@ -119,10 +119,12 @@ void OledDisplay::update(const char *timecode, uint8_t fps, bool locked,
             char mStr[2] = { (char)masterIndicator, '\0' };
             int mw = _u8g2.getStrWidth(mStr);
             _u8g2.drawStr((14 - mw) / 2, 60, mStr);
+        } else if (locked) {
+            // LTC slave synced via BLE — 'b' for Bluetooth
+            _u8g2.drawStr((14 - _u8g2.getStrWidth("B")) / 2, 60, "B");
         } else {
-            _u8g2.setFont(u8g2_font_open_iconic_www_1x_t);
-            _u8g2.drawGlyph(3, 60, locked ? 0x44 : 0x42);
-            _u8g2.setFont(u8g2_font_6x10_tf);
+            // LTC slave not synced — free-running indicator
+            _u8g2.drawStr((14 - _u8g2.getStrWidth("F")) / 2, 60, "F");
         }
 
         // Box 2: A/M

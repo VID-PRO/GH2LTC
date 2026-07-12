@@ -1036,7 +1036,27 @@ html,body{
   </div>
 )rawliteral");
 #endif
-#if TCWL_HDMI
+#if defined(TCWL_CLAP)
+    html += F(R"rawliteral(
+  <div class="ble-drawer-section" id="ble-section-clap">
+    <div class="settings-title">BLE Setup</div>
+    <div class="ble-form">
+      <div class="row">
+        <input type="text" id="ble-clap-name-input" value="" maxlength="32">
+        <button onclick="bleSetName()">Save Name</button>
+      </div>
+    </div>
+    <div class="ble-status">
+      Status: <span id="ble-status">—</span>
+    </div>
+    <div class="ble-form">
+      <button onclick="bleScan()" id="ble-scan-btn">Scan</button>
+      <div class="ble-msg" id="ble-msg-clap"></div>
+    </div>
+    <div id="ble-results"></div>
+  </div>
+)rawliteral");
+#elif TCWL_HDMI
     html += F(R"rawliteral(
   <div class="ble-drawer-section" id="ble-section-hdmi">
     <div class="settings-title">BLE Setup &mdash; Master</div>
@@ -1305,8 +1325,10 @@ function bleSetName(){
   var el=document.getElementById('ble-hdmi-name-input');
   if(!el||el.offsetParent===null)el=document.getElementById('ble-server-name-input');
   if(!el||el.offsetParent===null)el=document.getElementById('ble-ltc-name-input');
+  if(!el||el.offsetParent===null)el=document.getElementById('ble-clap-name-input');
   var msgEl=document.getElementById('ble-msg-hdmi');
   if(!msgEl||msgEl.offsetParent===null)msgEl=document.getElementById('ble-msg-ltc');
+  if(!msgEl||msgEl.offsetParent===null)msgEl=document.getElementById('ble-msg-clap');
   var n=el?el.value:'';
   if(!n)return;
   var x=new XMLHttpRequest();
@@ -1422,6 +1444,7 @@ function bleSelect(addr){
 function pollBleLtc(){
   var el=document.getElementById('ble-status');
   var nameEl=document.getElementById('ble-ltc-name-input');
+  if(!nameEl||nameEl.offsetParent===null)nameEl=document.getElementById('ble-clap-name-input');
   if(!el)return;
   var x=new XMLHttpRequest();
   x.open('GET','/api/ble',true);
@@ -1511,7 +1534,7 @@ if(currentMode!=3)pollBleLtc();
 #endif
 #if TCWL_CLAP
 html += String(F(R"rawliteral(
-// Load initial BLE name and status
+setInterval(pollBleLtc,3000);
 pollBleLtc();
 )rawliteral"));
 #endif

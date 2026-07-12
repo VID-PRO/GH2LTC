@@ -1157,8 +1157,24 @@ void setup() {
         blePrefs.end();
     }
 #if OLED_ENABLE
+#ifdef TCWL_CLAP
+    // CLAP: use a clean name without MAC suffix.  Read from NVS "name"
+    // (user-customizable via config drawer) but override stale defaults
+    // left behind by another variant.
+    {
+        const char *n = bleTimecodeGetName();
+        if (n[0] == '\0' || strcmp(n, "TC-WL-HDMI") == 0 ||
+            strcmp(n, "TC-WL-LTC") == 0) {
+            strcpy(gDeviceName, "TC-WL-CLAP");
+        } else {
+            strncpy(gDeviceName, n, sizeof(gDeviceName) - 1);
+            gDeviceName[sizeof(gDeviceName) - 1] = '\0';
+        }
+    }
+#else
     strncpy(gDeviceName, apSsid, sizeof(gDeviceName) - 1);
     gDeviceName[sizeof(gDeviceName) - 1] = '\0';
+#endif
 #endif
     // Register persistent callbacks BEFORE begin() so NVS state applies at once
 #if OLED_ENABLE
@@ -1256,6 +1272,28 @@ void setup() {
         }
 #endif
         Serial.println(F("done"));
+#ifdef TCWL_CLAP
+        // Override stale BLE name left by another variant.
+        {
+            const char *n = bleTimecodeGetName();
+            if (strcmp(n, "TC-WL-HDMI") == 0 ||
+                strcmp(n, "TC-WL-LTC") == 0 ||
+                n[0] == '\0') {
+                bleTimecodeSetName("TC-WL-CLAP");
+            }
+            // Also refresh gDeviceName now that we have the real name
+            // (it was set before BLE init from the old NVS value).
+#if OLED_ENABLE
+            strncpy(gDeviceName, bleTimecodeGetName(), sizeof(gDeviceName) - 1);
+            gDeviceName[sizeof(gDeviceName) - 1] = '\0';
+            if (gDeviceName[0] == '\0' ||
+                strcmp(gDeviceName, "TC-WL-HDMI") == 0 ||
+                strcmp(gDeviceName, "TC-WL-LTC") == 0) {
+                strcpy(gDeviceName, "TC-WL-CLAP");
+            }
+#endif
+        }
+#endif
     }
 
 #if TCWL_HDMI
