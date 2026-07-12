@@ -120,6 +120,7 @@ src/matrix/                    MAX7219 64×8 framebuffer driver
 src/oled/                      optional SSD1306 via U8g2
 src/rtc/                       optional DS3231 RTC driver
 src/timecode/                  BLE master (advertise/notify) & slave (scan/select/connect/subscribe)
+3DPrints/                     STL/3MF enclosures for master (ESP32-P4) and clap (ESP32-C3 + LED matrix)
 ```
 
 ---
