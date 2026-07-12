@@ -86,11 +86,6 @@ void Max7219Display::showTimecode(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss
         }
     }
 
-    if (_bleConnected) {
-        buf[63] |= 0xC0;
-        buf[62] |= 0x80;
-    }
-
     _mx.control(MD_MAX72XX::SHUTDOWN, MD_MAX72XX::ON);
     _mx.update(MD_MAX72XX::OFF);
     for (uint8_t i = 0; i < 64; i++) {
@@ -102,20 +97,7 @@ void Max7219Display::showTimecode(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss
 }
 
 void Max7219Display::setBleConnected(bool en) {
-    if (_bleConnected == en) return;
     _bleConnected = en;
-    _mx.control(MD_MAX72XX::SHUTDOWN, MD_MAX72XX::ON);
-    _mx.update(MD_MAX72XX::OFF);
-    if (en) {
-        _mx.setColumn(63, _mx.getColumn(63) | 0xC0);
-        _mx.setColumn(62, _mx.getColumn(62) | 0x80);
-    } else {
-        _mx.setColumn(63, _mx.getColumn(63) & ~0xC0);
-        _mx.setColumn(62, _mx.getColumn(62) & ~0x80);
-    }
-    _mx.update();
-    _mx.update(MD_MAX72XX::ON);
-    _mx.control(MD_MAX72XX::SHUTDOWN, MD_MAX72XX::OFF);
 }
 
 void Max7219Display::showText(const char *text) {
