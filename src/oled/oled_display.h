@@ -6,6 +6,14 @@
 #include <Wire.h>
 #include <U8g2lib.h>
 
+// Allow per-board override of OLED I2C pins (e.g. master has separate OLED bus)
+#ifndef OLED_I2C_SDA_PIN
+#define OLED_I2C_SDA_PIN  TC_I2C_SDA_PIN
+#endif
+#ifndef OLED_I2C_SCL_PIN
+#define OLED_I2C_SCL_PIN  TC_I2C_SCL_PIN
+#endif
+
 class OledDisplay {
 public:
     OledDisplay();

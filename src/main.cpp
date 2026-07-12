@@ -457,12 +457,11 @@ static void masterSetup() {
     Serial.println(F("LTC timer SKIPPED (debug)"));
 #endif
 
-    // TC358743 probe via hardware I2C — try default address, then alternatives
+    // TC358743 probe — initialises Wire for all I2C devices on the shared bus
     Serial.printf("I2C: SDA=%d SCL=%d RST=%d\n",
                   TC_I2C_SDA_PIN, TC_I2C_SCL_PIN, TC_RESET_PIN);
     tcPresent = tc.begin(TC_I2C_SDA_PIN, TC_I2C_SCL_PIN, TC_RESET_PIN);
     if (!tcPresent) {
-        // tc.begin() called Wire.end() on failure; reinit for further probes
         Wire.begin(TC_I2C_SDA_PIN, TC_I2C_SCL_PIN, 100000);
         static const uint8_t altAddrs[] = { 0x0F, 0x1F, 0x3D };
         for (int i = 0; i < 3; i++) {
@@ -478,68 +477,67 @@ static void masterSetup() {
 
     // Full I2C bus scan
     Serial.print(F("I2C bus: "));
-    int nFound = 0;
-    for (uint8_t addr = 1; addr < 127; addr++) {
-        Wire.beginTransmission(addr);
-        if (Wire.endTransmission() == 0) {
-            if (nFound) Serial.print(F(", "));
-            Serial.printf("0x%02X", addr);
-            nFound++;
-            // Tag known devices
-            if (addr == 0x0F) Serial.print(F("(TC358743)"));
-            else if (addr == 0x1F) Serial.print(F("(TC358743?)"));
-            else if (addr == 0x3C) Serial.print(F("(OLED)"));
-            else if (addr == 0x3D) Serial.print(F("(TC358743?)"));
-            else if (addr == 0x68) Serial.print(F("(DS3231)"));
+    {
+        int nFound = 0;
+        for (uint8_t addr = 1; addr < 127; addr++) {
+            Wire.beginTransmission(addr);
+            if (Wire.endTransmission() == 0) {
+                if (nFound) Serial.print(F(", "));
+                Serial.printf("0x%02X", addr);
+                nFound++;
+                if (addr == 0x0F) Serial.print(F("(TC358743)"));
+                else if (addr == 0x1F) Serial.print(F("(TC358743?)"));
+                else if (addr == 0x3C) Serial.print(F("(OLED)"));
+                else if (addr == 0x3D) Serial.print(F("(TC358743?)"));
+                else if (addr == 0x68) Serial.print(F("(DS3231)"));
+            }
         }
+        if (nFound == 0) Serial.print(F("(none) — I2C bus not working or no devices"));
+        Serial.println();
     }
-    if (nFound == 0) Serial.print(F("(none) — I2C bus not working or no devices"));
-    Serial.println();
     if (!tcPresent) {
         Serial.println(F("ERROR: TC358743 not responding — HDMI disabled."));
     } else {
         Serial.println(F("TC358743 detected OK."));
     }
 
-    if (tcPresent) {
-#if RTC_ENABLE
-        rtcPresent = rtc.begin(RTC_I2C_SDA_PIN, RTC_I2C_SCL_PIN);
-        if (rtcPresent) {
-            Serial.println(F("DS3231 RTC detected."));
-            if (rtc.readTime(rtcHH, rtcMM, rtcSS)) {
-                ltc.setTime(rtcHH, rtcMM, rtcSS, 0);
-                lastRtcReadMs = lastRtcSyncMs = millis();
-                Serial.print(F("RTC initial time: "));
-                if (rtcHH < 10) Serial.print('0');
-                Serial.print(rtcHH); Serial.print(':');
-                if (rtcMM < 10) Serial.print('0');
-                Serial.print(rtcMM); Serial.print(':');
-                if (rtcSS < 10) Serial.print('0');
-                Serial.println(rtcSS);
-            }
-        } else {
-            Serial.println(F("No RTC detected."));
-            ltc.setTime(1, 0, 0, 0);
-        }
-#else
-        ltc.setTime(1, 0, 0, 0);
-#endif
-#if OLED_ENABLE
-        if (webui.oledEnabled()) {
-            if (oled.begin()) {
-                Serial.println(F("OLED display initialized."));
-            } else {
-                Serial.println(F("OLED not detected — skipping."));
-            }
-        }
-#endif
-    } else {
-#if RTC_ENABLE
-        rtcPresent = false;
-#endif
-        ltc.setTime(1, 0, 0, 0);
-        Serial.println(F("Skipping I2C devices (no TC358743)."));
+    if (!tcPresent) {
+        Serial.println(F("Skipping TC358743 — running in standalone mode."));
     }
+
+    // RTC & OLED are on their own I2C bus — always probe regardless of TC
+#if RTC_ENABLE
+    rtcPresent = rtc.begin(RTC_I2C_SDA_PIN, RTC_I2C_SCL_PIN);
+    if (rtcPresent) {
+        Serial.println(F("DS3231 RTC detected."));
+        if (rtc.readTime(rtcHH, rtcMM, rtcSS)) {
+            ltc.setTime(rtcHH, rtcMM, rtcSS, 0);
+            lastRtcReadMs = lastRtcSyncMs = millis();
+            Serial.print(F("RTC initial time: "));
+            if (rtcHH < 10) Serial.print('0');
+            Serial.print(rtcHH); Serial.print(':');
+            if (rtcMM < 10) Serial.print('0');
+            Serial.print(rtcMM); Serial.print(':');
+            if (rtcSS < 10) Serial.print('0');
+            Serial.println(rtcSS);
+        }
+    } else {
+        Serial.println(F("No RTC detected."));
+        ltc.setTime(1, 0, 0, 0);
+    }
+#else
+    ltc.setTime(1, 0, 0, 0);
+#endif
+
+#if OLED_ENABLE
+    if (webui.oledEnabled()) {
+        if (oled.begin()) {
+            Serial.println(F("OLED display initialized."));
+        } else {
+            Serial.println(F("OLED not detected — skipping."));
+        }
+    }
+#endif
 
 #if FPS_AUTO_DETECT
     Serial.println(F("FPS auto-detect enabled."));

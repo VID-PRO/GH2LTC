@@ -1,6 +1,6 @@
 # [VID-PRO](https://www.vid-pro.de) GH2LTC
 
-Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-12M LTC audio. Three PlatformIO environments: **master** (Waveshare ESP32-P4-WIFI6, HDMI receiver, BLE server), **slave** (ESP32-C3 Super Mini, BLE client, standalone LTC output), and **clap** (ESP32-C3, BLE client, LED matrix only).
+Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-12M LTC audio. Three PlatformIO environments: **master** (Waveshare ESP32-P4-WIFI6, HDMI receiver, BLE server), **slave** (ESP32-C3 Super Mini, BLE client, standalone LTC output), and **clap** (ESP32-C3, BLE client, LED matrix only). The master has no LED matrix — it uses a different GPIO layout from the slave boards.
 
 ---
 
@@ -12,7 +12,7 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 | **LTC generation** | Standalone SMPTE-12M biphase-mark encoder, esp_timer-driven, independent of I2C polling |
 | **Frame rates** | Auto-detected from HDMI (24/25/30/50/60 fps) or manual via web UI |
 | **RTC fallback** | Optional DS3231 preserves accurate time across power cycles with frame interpolation |
-| **LED matrix** | 8 daisy-chained MAX7219 8×8 modules (64×8 px), software SPI; runtime toggle in web UI |
+| **LED matrix (slave/clap)** | 8 daisy-chained MAX7219 8×8 modules (64×8 px), software SPI; runtime toggle in web UI; not available on master |
 | **OLED display (optional)** | 128×64 SSD1306 on shared I2C bus shows timecode + HDMI lock status |
 | **Web UI** | Fullscreen dark-teal SPA: timecode display, Auto/fixed FPS config, jam sync, brightness slider, matrix on/off, WiFi config |
 | **WiFi** | AP on boot; auto-STA connect to saved network; AP re-enables on disconnect |
@@ -31,7 +31,6 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 | **Waveshare ESP32-P4-WIFI6** | ESP32-P4 + ESP32-C6 companion for WiFi/BLE | [waveshare.com](https://www.waveshare.com) |
 | **TC358743 HDMI→CSI-2** | e.g. Geekworm C790 — I2C + CSI-2 | widely available |
 | **22-pin to 15-pin CSI ribbon cable** | Connects TC358743 to ESP32-P4-WIFI6 CSI connector | search "22-pin to 15-pin CSI cable" |
-| **MAX7219 8×8 LED matrix** | 8 daisy-chained modules (64×8 px) | widely available |
 | **DS3231 RTC (optional)** | Battery-backed, I2C, ±2ppm | any electronics supplier |
 | **128×64 OLED SSD1306 (optional)** | I2C, shares bus with TC358743 + RTC | any electronics supplier |
 | **3.5mm TRS jack** | LTC audio output | any electronics supplier |
@@ -58,13 +57,7 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 | SDA | 7 | 4 | TC358743 `0x0F` + OLED `0x3C` + DS3231 `0x68` |
 | SCL | 8 | 5 | shared |
 
-#### MAX7219 LED Matrix (software SPI)
-
-| Signal | GPIO |
-|--------|------|
-| DIN | 2 |
-| CS | 3 |
-| CLK | 10 |
+> MAX7219 pin table (slave/clap only): DIN=GPIO2, CS=GPIO3, CLK=GPIO10
 
 #### LTC Output
 
@@ -157,8 +150,8 @@ Open `http://192.168.4.1` (AP mode) or the ESP's STA IP. The header displays a c
 | **Timecode display** | Fullscreen `dd:hh:mm:ss:ff` with color-coded status dot (green=HDMI, orange=RTC, gray=free) |
 | **FPS config** | Auto (re-detect from HDMI) or fixed 24/25/30/50/60, drop-frame toggle, saved to NVS |
 | **Jam sync** | Set timecode manually (dd:hh:mm:ss:ff) |
-| **Brightness** | Slider for MAX7219 intensity (0–15), saved to NVS |
-| **Matrix toggle** | Enable/disable LED matrix display at runtime, saved to NVS |
+| **Brightness (slave/clap)** | Slider for MAX7219 intensity (0–15), saved to NVS |
+| **Matrix toggle (slave/clap)** | Enable/disable LED matrix display at runtime, saved to NVS |
 | **WiFi config** | SSID/password input, saved to NVS, forget option |
 | **BLE (master)** | Change broadcast name, view connected slave count, disconnect all |
 | **BLE (slave/clap)** | Scan for master devices (name + address), tap to connect, view connected master name, BLE connection indicator (bottom-left dots) on LED matrix |
@@ -167,16 +160,16 @@ Open `http://192.168.4.1` (AP mode) or the ESP's STA IP. The header displays a c
 
 ## Configuration Defaults
 
-| Setting | Master (HDMI + BLE server) | Slave (BLE client, no HDMI) | Clap (LED matrix only) |
+| Setting | Master (HDMI + BLE server, no matrix) | Slave (BLE client, no HDMI) | Clap (LED matrix only) |
 |---------|---------------------------|-----------------------------|------------------------|
 | WiFi AP SSID | `TC-MASTER-` + last 4 MAC digits | `TC-SLAVE-` + last 4 MAC digits | `TC-CLAP-` + last 4 MAC digits |
 | FPS | Auto (re-detect) | Auto (re-detect†) | Auto (re-detect†) |
 | Drop frame | Off | Off | Off |
 | RTC | Optional (DS3231) | Optional (DS3231) | Optional (DS3231) |
 | OLED | Optional (SSD1306) | Optional (SSD1306) | Disabled |
-| MAX7219 matrix | Off by default | Off by default | Enabled by default |
-| Matrix brightness | 4 (0–15) | 4 | 4 |
-| BLE indicator (matrix) | 3-pixel dot (bottom-left) when slaves connected | 3-pixel dot (bottom-left) when connected | 3-pixel dot (bottom-left) when connected |
+| MAX7219 matrix | Disabled (no hardware) | Off by default | Enabled by default |
+| Matrix brightness | N/A | 4 | 4 |
+| BLE indicator (matrix) | N/A | 3-pixel dot (bottom-left) when connected | 3-pixel dot (bottom-left) when connected |
 | LTC output pin | GPIO6 | GPIO6 | GPIO6 |
 | TC_RESET_PIN | -1 (unused) | — | — |
 | Reverse-engineer mode | 0 (set to 1 in `config_master.h`) | — | — |
@@ -193,7 +186,7 @@ A custom 128-bit BLE service (`9a6f0001-...`) transfers timecode from master to 
 - **Master**: advertises the service, sends a notification on every frame tick via `bleTimecodeUpdate()`. Broadcast name configurable via web UI; disconnect button removes all connected slaves.
 - **Slave**: scans for devices offering the service (showing name + address), taps one to connect. On receiving a timecode packet it jams the local `LtcEncoder` in real time. The web UI displays the connected master's device name.
 
-The slave/clap run their own independent LTC generator, MAX7219 matrix display (clap shows 3-pixel BLE indicator at bottom-left when connected), and web UI.
+Slave/clap run their own independent LTC generator, MAX7219 matrix display (clap shows 3-pixel BLE indicator at bottom-left when connected), and web UI. The master has no MAX7219 hardware and relies on the OLED for status display.
 
 ---
 

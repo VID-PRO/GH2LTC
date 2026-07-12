@@ -2,11 +2,12 @@
 
 #if OLED_ENABLE
 OledDisplay::OledDisplay()
-    : _u8g2(U8G2_R0, U8X8_PIN_NONE, TC_I2C_SCL_PIN, TC_I2C_SDA_PIN), _present(false), _lastFps(0) {
+    : _u8g2(U8G2_R0, U8X8_PIN_NONE, OLED_I2C_SCL_PIN, OLED_I2C_SDA_PIN), _present(false), _lastFps(0) {
     _lastTc[0] = '\0';
 }
 
 bool OledDisplay::begin() {
+    Wire.begin(OLED_I2C_SDA_PIN, OLED_I2C_SCL_PIN, 100000);
     Wire.beginTransmission(OLED_I2C_ADDR);
     if (Wire.endTransmission() != 0) {
         _present = false;

@@ -10,6 +10,10 @@
 #define TC_I2C_SDA_PIN   7
 #define TC_I2C_SCL_PIN   8
 
+// Master has no LED matrix (different GPIO layout)
+#undef MAX7219_ENABLE
+#define MAX7219_ENABLE        0
+
 // Reverse‑engineer mode (dump GH5 InfoFrame packets over serial to decode byte layout)
 #define REVERSE_ENGINEER_MODE 0
 
