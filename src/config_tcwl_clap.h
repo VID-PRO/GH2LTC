@@ -6,8 +6,10 @@
 // TC-WL-CLAP: WiFi + BLE client + LED matrix + OLED
 #define MATRIX_ENABLED_DEFAULT 1
 
-// OLED on shared I2C bus (default SDA=GPIO4, SCL=GPIO5 — free on CLAP)
+// OLED on shared I2C bus (SDA=GPIO4, SCL=GPIO5 — free on CLAP)
 #define OLED_ENABLE 1
+#define OLED_I2C_SDA_PIN   4
+#define OLED_I2C_SCL_PIN   5
 
 // No physical buttons on CLAP
 #undef BTN_UP_PIN

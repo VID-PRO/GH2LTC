@@ -3,8 +3,8 @@
 
 // 5x7 font — bit 0 = top row, bit 6 = bottom row.
 // Indices 0-9 = '0'-'9', 10 = ':', 11='V', 12='I', 13='D', 14='-', 15='P', 16='R', 17='O',
-// 18='M', 19='A', 20='S', 21='T', 22='E', 23='L', 24='C'
-const uint8_t Max7219Display::_font[25][5] = {
+// 18='M', 19='A', 20='S', 21='T', 22='E', 23='L', 24='C', 25='W'
+const uint8_t Max7219Display::_font[26][5] = {
     {0x3E, 0x51, 0x49, 0x45, 0x3E}, // 0
     {0x00, 0x42, 0x7F, 0x40, 0x00}, // 1
     {0x72, 0x49, 0x49, 0x49, 0x46}, // 2
@@ -30,6 +30,7 @@ const uint8_t Max7219Display::_font[25][5] = {
     {0x7F, 0x49, 0x49, 0x49, 0x49}, // E
     {0x7F, 0x40, 0x40, 0x40, 0x40}, // L
     {0x3E, 0x41, 0x41, 0x41, 0x22}, // C
+    {0x3F, 0x40, 0x38, 0x40, 0x3F}, // W
 };
 
 // Constructor: hardware SPI (csPin, numModules)
@@ -182,6 +183,8 @@ void Max7219Display::_drawChar(uint8_t *buf, uint8_t col, char c) {
         idx = 23;
     } else if (c == 'C') {
         idx = 24;
+    } else if (c == 'W') {
+        idx = 25;
     } else {
         return;
     }

@@ -10,9 +10,12 @@ bool OledDisplay::begin() {
     Wire.begin(OLED_I2C_SDA_PIN, OLED_I2C_SCL_PIN, 100000);
     Wire.beginTransmission(OLED_I2C_ADDR);
     if (Wire.endTransmission() != 0) {
+        Serial.print(F("OLED not found at 0x"));
+        Serial.println(OLED_I2C_ADDR, HEX);
         _present = false;
         return false;
     }
+    Serial.println(F("OLED detected"));
 
     _u8g2.begin();
     _u8g2.clearBuffer();

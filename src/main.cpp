@@ -547,9 +547,11 @@ static void printConfig() {
     Serial.print(F(" ADDR=0x")); Serial.println(TC_I2C_ADDR, HEX);
     Serial.print(F("  TC_RESET_PIN      ")); Serial.println(TC_RESET_PIN);
 #endif
-#ifndef TCWL_CLAP
+#if OLED_ENABLE
     Serial.print(F("  OLED_ENABLED      ")); Serial.println(webui.oledEnabled() ? "1" : "0");
-    if (OLED_ENABLE) { Serial.print(F("  OLED_I2C_ADDR    0x")); Serial.println(OLED_I2C_ADDR, HEX); }
+    Serial.print(F("  OLED_I2C          SDA=")); Serial.print(OLED_I2C_SDA_PIN);
+    Serial.print(F(" SCL=")); Serial.print(OLED_I2C_SCL_PIN);
+    Serial.print(F(" ADDR=0x")); Serial.println(OLED_I2C_ADDR, HEX);
 #endif
     Serial.print(F("  RTC_ENABLE        ")); Serial.println(RTC_ENABLE);
     if (RTC_ENABLE) {
@@ -870,7 +872,7 @@ static void hdmiLoop() {
 #if OLED_ENABLE
         if (webui.oledEnabled()) {
             fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
-            oled.update(tcStr, ltc.fps(), hdmiOk, gDeviceName, webui.autoFps(), "OUT", 0, readBatteryPct(), 'H');
+            oled.update(tcStr, ltc.fps(), hdmiOk, gDeviceName, webui.autoFps(), "OUT", 0, readBatteryPct(), hdmiOk ? 'H' : 'F');
         }
 #if BTN_UP_PIN >= 0
         if (menu.active() && webui.oledEnabled()) {
@@ -935,6 +937,7 @@ static void ltcSetup() {
 #endif
 
 #if OLED_ENABLE
+    Serial.printf("  OLED_ENABLED=%d\n", webui.oledEnabled());
     if (webui.oledEnabled()) {
         oled.begin();
         Serial.println(F("OLED started"));
@@ -1171,6 +1174,13 @@ void setup() {
     Serial.println(apSsid);
     webui.begin(apSsid, WEBUI_AP_PASSWORD,
                 WEBUI_STA_SSID, WEBUI_STA_PASSWORD);
+
+    // CLAP has OLED hardwired with no user toggle (no physical buttons), so
+    // force it on regardless of any stale NVS preference from another variant.
+#ifdef TCWL_CLAP
+    webui.setOledEnabled(true);
+#endif
+
     webui.onSetFps([](uint8_t fps, bool df) {
         ltc.setFps(fps, df);
         framePollMs = 1000 / fps;
