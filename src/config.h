@@ -1,7 +1,7 @@
 #pragma once
 
 // ---------------------------------------------------------------------------
-// Pin & hardware configuration — ESP32-C3 Super Mini
+// Pin & hardware configuration — Seeed Studio XIAO ESP32-C3
 // ---------------------------------------------------------------------------
 
 // I2C pins to the TC358743 HDMI receiver board (single bus, shared with OLED & RTC)
@@ -19,10 +19,12 @@
 #define LTC_IN_PIN       7
 
 // OLED menu push-buttons (momentary to GND, internal pull-up enabled)
+// TC-WL-LTC has no LED matrix, so GPIO 2 and 3 (normally MAX7219 DIN/CS) are
+// free for button use.  GPIO0/1 avoided (strapping function).
 #define BTN_UP_PIN       8
 #define BTN_DOWN_PIN     9
-#define BTN_OK_PIN       18
-#define BTN_CANCEL_PIN   19
+#define BTN_OK_PIN       2
+#define BTN_CANCEL_PIN   3
 
 // TC358743 RESETN has internal pull-up — no GPIO needed
 
@@ -68,7 +70,7 @@
 
 // MAX7219 8x8 LED matrix display configuration (optional — set to 0 to skip)
 // 8 modules daisy-chained = 64x8 pixels. Software SPI (no hardware SPI on these pins).
-// Pins: see schematic for wiring on ESP32-C3 Super Mini.
+// Pins: see schematic for wiring on XIAO ESP32-C3.
 #define MAX7219_ENABLE       1
 #define MAX7219_DIN_PIN      2
 #define MAX7219_CS_PIN       3

@@ -1,15 +1,30 @@
 name: Build firmware
 
 on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master]
   release:
     types: [published]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
 
 jobs:
   build:
+    strategy:
+      matrix:
+        env: [TC-WL-HDMI, TC-WL-LTC, TC-WL-CLAP]
+      fail-fast: false
+
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
@@ -18,47 +33,80 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: pio-${{ matrix.env }}-${{ hashFiles('platformio.ini', 'src/**') }}
+          restore-keys: |
+            pio-${{ matrix.env }}-
+            pio-
+
       - name: Install PlatformIO
         run: pip install platformio
 
-      - name: Build firmware (all envs)
-        run: pio run -e TC-WL-HDMI -e TC-WL-LTC -e TC-WL-CLAP
+      - name: Build ${{ matrix.env }}
+        run: pio run -e ${{ matrix.env }}
 
-      - name: Upload firmware binaries to release
-        if: github.event_name == 'release'
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ matrix.env }}
+          path: |
+            .pio/build/${{ matrix.env }}/firmware.bin
+            .pio/build/${{ matrix.env }}/bootloader.bin
+            .pio/build/${{ matrix.env }}/partitions.bin
+
+  release:
+    if: github.event_name == 'release'
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Upload binaries to release
         run: |
           mkdir -p upload
-
           for env in TC-WL-HDMI TC-WL-LTC TC-WL-CLAP; do
-            cp ".pio/build/$env/firmware.bin"    "upload/${env}_firmware.bin"
-            cp ".pio/build/$env/bootloader.bin"  "upload/${env}_bootloader.bin"
-            cp ".pio/build/$env/partitions.bin"  "upload/${env}_partitions.bin"
+            cp "artifacts/firmware-$env/firmware.bin"    "upload/${env}_firmware.bin"
+            cp "artifacts/firmware-$env/bootloader.bin"  "upload/${env}_bootloader.bin"
+            cp "artifacts/firmware-$env/partitions.bin"  "upload/${env}_partitions.bin"
           done
-
           gh release upload "${{ github.ref_name }}" upload/* --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Generate release notes
+        run: |
           gh release view "${{ github.ref_name }}" --json body --jq .body > existing-notes.md
           {
             printf '\n---\n\n## Flashing\n\n'
-            printf '### TC-WL-HDMI (ESP32-P4-WIFI6)\n```\nesptool.py --chip esp32p4 --port /dev/ttyUSB0 write_flash \\\n  0x0 .pio/build/TC-WL-HDMI/bootloader.bin \\\n  0x8000 .pio/build/TC-WL-HDMI/partitions.bin \\\n  0x10000 .pio/build/TC-WL-HDMI/firmware.bin\n```\n\n'
-            printf '### TC-WL-LTC (ESP32-C3)\n```\nesptool.py --chip esp32c3 --port /dev/ttyUSB0 write_flash \\\n  0x0 .pio/build/TC-WL-LTC/bootloader.bin \\\n  0x8000 .pio/build/TC-WL-LTC/partitions.bin \\\n  0x10000 .pio/build/TC-WL-LTC/firmware.bin\n```\n\n'
-            printf '### TC-WL-CLAP (ESP32-C3, LED matrix only)\n```\nesptool.py --chip esp32c3 --port /dev/ttyUSB0 write_flash \\\n  0x0 .pio/build/TC-WL-CLAP/bootloader.bin \\\n  0x8000 .pio/build/TC-WL-CLAP/partitions.bin \\\n  0x10000 .pio/build/TC-WL-CLAP/firmware.bin\n```\n\n'
-            printf 'Replace `/dev/ttyUSB0` with your port (`COM3` on Windows, `/dev/cu.usbmodem*` on macOS).\n'
+            printf '### TC-WL-HDMI (ESP32-P4-WIFI6 — HDMI receiver + BLE server)\n'
+            printf '```\nesptool.py --chip esp32p4 --port /dev/ttyUSB0 write_flash \\\n'
+            printf '  0x0 .pio/build/TC-WL-HDMI/bootloader.bin \\\n'
+            printf '  0x8000 .pio/build/TC-WL-HDMI/partitions.bin \\\n'
+            printf '  0x10000 .pio/build/TC-WL-HDMI/firmware.bin\n```\n\n'
+            printf '### TC-WL-LTC (ESP32-C3 — dual-role master/slave)\n'
+            printf 'Connect via web UI at http://192.168.4.1 → Settings → Device Mode to\n'
+            printf 'switch between **Slave** (BLE client, LTC output) and **Master** (LTC input, BLE server).\n'
+            printf '```\nesptool.py --chip esp32c3 --port /dev/ttyUSB0 write_flash \\\n'
+            printf '  0x0 .pio/build/TC-WL-LTC/bootloader.bin \\\n'
+            printf '  0x8000 .pio/build/TC-WL-LTC/partitions.bin \\\n'
+            printf '  0x10000 .pio/build/TC-WL-LTC/firmware.bin\n```\n\n'
+            printf '### TC-WL-CLAP (ESP32-C3 — BLE client, LED matrix only)\n'
+            printf '```\nesptool.py --chip esp32c3 --port /dev/ttyUSB0 write_flash \\\n'
+            printf '  0x0 .pio/build/TC-WL-CLAP/bootloader.bin \\\n'
+            printf '  0x8000 .pio/build/TC-WL-CLAP/partitions.bin \\\n'
+            printf '  0x10000 .pio/build/TC-WL-CLAP/firmware.bin\n```\n\n'
+            printf 'Replace `/dev/ttyUSB0` with your port (e.g. `COM3` on Windows, `/dev/cu.usbmodem*` on macOS).\n'
           } >> existing-notes.md
           gh release edit "${{ github.ref_name }}" --notes-file existing-notes.md
         env:
           GH_TOKEN: ${{ github.token }}
-
-      - name: Upload artifacts (all envs)
-        uses: actions/upload-artifact@v4
-        with:
-          name: firmware
-          path: |
-            .pio/build/TC-WL-HDMI/firmware.bin
-            .pio/build/TC-WL-HDMI/bootloader.bin
-            .pio/build/TC-WL-HDMI/partitions.bin
-            .pio/build/TC-WL-LTC/firmware.bin
-            .pio/build/TC-WL-LTC/bootloader.bin
-            .pio/build/TC-WL-LTC/partitions.bin
-            .pio/build/TC-WL-CLAP/firmware.bin
-            .pio/build/TC-WL-CLAP/bootloader.bin
-            .pio/build/TC-WL-CLAP/partitions.bin

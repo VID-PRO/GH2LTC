@@ -1,6 +1,6 @@
 # [VID-PRO](https://www.vid-pro.de) TC-WL
 
-Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-12M LTC audio. Three PlatformIO environments: **TC-WL-HDMI** (Waveshare ESP32-P4-WIFI6, HDMI receiver, BLE server), **TC-WL-LTC** (ESP32-C3 Super Mini, dual-role: BLE server with LTC input or BLE client with LTC output), and **TC-WL-CLAP** (ESP32-C3, BLE client, LED matrix only). TC-WL-HDMI has no LED matrix — it uses a different GPIO layout from the LTC/CLAP boards.
+Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-12M LTC audio. Three PlatformIO environments: **TC-WL-HDMI** (Waveshare ESP32-P4-WIFI6, HDMI receiver, BLE server), **TC-WL-LTC** (Seeed Studio XIAO ESP32-C3, dual-role: BLE server with LTC input or BLE client with LTC output), and **TC-WL-CLAP** (ESP32-C3, BLE client, LED matrix only). TC-WL-HDMI has no LED matrix — it uses a different GPIO layout from the LTC/CLAP boards.
 
 ---
 
@@ -37,39 +37,35 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 | **R1: 1kΩ, C1: 4.7nF, C2: 1µF** | LTC low-pass + DC block | — |
 | **R3, R4: 10kΩ** | LTC level pad | — |
 | **CR2032 coin cell** | Backup for DS3231 | any electronics supplier |
+#### TC-WL-LTC (Seeed Studio XIAO ESP32-C3)
 
-#### TC-WL-LTC (ESP32-C3 Super Mini)
 | Component | Notes |
 |-----------|-------|
-| **ESP32-C3 Super Mini** | 400 MHz RISC-V, USB-C |
+| **Seeed Studio XIAO ESP32-C3** | 400 MHz RISC-V, USB-C |
 | **MAX7219 8×8 LED matrix** | 8 daisy-chained modules (64×8 px) |
 | **DS3231 RTC (optional)** | I2C |
 | **128×64 OLED SSD1306 (optional)** | I2C |
 | **3.5mm TRS jack** | LTC audio output |
 | **Passives** | Same RC filter as HDMI board |
 
-### Pin Assignments
+### Pinout
 
-#### I2C Bus (shared — single peripheral)
-
-| Signal | Master GPIO (CSI) | Slave GPIO | Device |
-|--------|-------------------|------------|--------|
-| SDA | 7 | 4 | TC358743 `0x0F` + OLED `0x3C` + DS3231 `0x68` |
-| SCL | 8 | 5 | shared |
-
-#### MAX7219 pin table (LTC/CLAP only): DIN=GPIO2, CS=GPIO3, CLK=GPIO10
-
-#### LTC Output
-
-| Signal | GPIO |
-|--------|------|
-| LTC_OUT | 6 |
-
-#### TC358743 Reset (not connected — rely on internal POR)
-
-| Signal | GPIO |
-|--------|------|
-| TC_RESET | -1 (unused) |
+| Function | TC-WL-HDMI (ESP32-P4) | TC-WL-LTC (ESP32-C3) | TC-WL-CLAP (ESP32-C3) |
+|----------|----------------------|----------------------|----------------------|
+| **I2C SDA** | GPIO 7 | GPIO 4 | — |
+| **I2C SCL** | GPIO 8 | GPIO 5 | — |
+| **I2C devices** | TC358743 `0x0F`, OLED `0x3C`, DS3231 `0x68` | OLED `0x3C`, DS3231 `0x68` | — |
+| **MAX7219 DIN** | — | — (GPIO 2 used for button) | GPIO 2 |
+| **MAX7219 CS** | — | — (GPIO 3 used for button) | GPIO 3 |
+| **MAX7219 CLK** | — | — | GPIO 10 |
+| **LTC output** | GPIO 6 | GPIO 6 | GPIO 6 |
+| **LTC input (master)** | — | GPIO 7 | — |
+| **Button UP** | — | GPIO 8 | — |
+| **Button DOWN** | — | GPIO 9 | — |
+| **Button OK** | — | GPIO 2 | — |
+| **Button CANCEL** | — | GPIO 3 | — |
+| **TC358743 reset** | GPIO -1 (unused) | — | — |
+| **CSI connector** | 22-pin to TC358743 | — | — |
 
 ---
 
@@ -79,7 +75,7 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 
 | Env | Board | Role | BLE | Platform |
 |-----|-------|------|-----|----------|
-| `TC-WL-LTC` | ESP32-C3 Super Mini | Dual-role: master (BLE server + LTC input) or slave (BLE client + LTC output), OLED + RTC, physical buttons, OLED menu | ✓ (native C3) | `pioarduino/platform-espressif32`† |
+| `TC-WL-LTC` | Seeed Studio XIAO ESP32-C3 | Dual-role: master (BLE server + LTC input) or slave (BLE client + LTC output), OLED + RTC, physical buttons, OLED menu | ✓ (native C3) | `pioarduino/platform-espressif32`† |
 | `TC-WL-CLAP` | ESP32-C3 Super Mini | BLE client, LED matrix only | ✓ (native C3) | `pioarduino/platform-espressif32`† |
 | `TC-WL-HDMI` | ESP32-P4-WIFI6 | HDMI receiver, BLE server | via C6 coprocessor‡ (ESP-Hosted SDIO) | `pioarduino/platform-espressif32`† |
 

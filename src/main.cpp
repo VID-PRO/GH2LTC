@@ -24,7 +24,7 @@
 #endif
 #include "timecode/ble_timecode.h"
 
-#if TCWL_LTC && OLED_ENABLE
+#if OLED_ENABLE
 #include "btn/button.h"
 #include "oled/oled_menu.h"
 #endif
@@ -48,7 +48,7 @@ static void fmtTcStr(uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff) {
 #if OLED_ENABLE
 static OledDisplay oled;
 
-#if TCWL_LTC && !defined(TCWL_CLAP)
+#if OLED_ENABLE && !defined(TCWL_CLAP)
 static Button btnUp(BTN_UP_PIN);
 static Button btnDown(BTN_DOWN_PIN);
 static Button btnOk(BTN_OK_PIN);
@@ -381,8 +381,8 @@ static void onLtcDecoded(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_t
 static unsigned long lastDecodedFrameMs = 0;
 #endif
 
-#if defined(TCWL_LTC) && OLED_ENABLE && !defined(TCWL_CLAP)
-// ── OLED menu helpers ──────────────────────────────────────────
+#if OLED_ENABLE && !defined(TCWL_CLAP)
+// ── Shared OLED menu helpers ──────────────────────────────────
 static void menuSaveFps(uint8_t fps, bool df) {
     ltc.setFps(fps, df);
     framePollMs = 1000 / fps;
@@ -412,6 +412,14 @@ static const char* menuGetDf() {
 static void menuToggleDf() {
     menuSaveFps(ltc.fps(), !ltc.dropFrame());
 }
+static const char* menuGetLtcOut() { return webui.ltcEnabled() ? "On" : "Off"; }
+static const char* menuGetOled()   { return webui.oledEnabled() ? "On" : "Off"; }
+static void menuToggleLtcOut() { webui.setLtcEnabled(!webui.ltcEnabled()); }
+static void menuToggleOled()   { webui.setOledEnabled(!webui.oledEnabled()); oled.forceRedraw(); }
+static void menuExit()         { menu.hide(); oled.forceRedraw(); }
+
+#if TCWL_LTC
+// ── LTC-specific menu helpers ─────────────────────────────────
 static const char* menuGetMode() {
     return bleGetMode() == TCWL_MODE_LTC_MASTER ? "Master" : "Slave";
 }
@@ -420,19 +428,14 @@ static void menuToggleMode() {
     delay(100);
     ESP.restart();
 }
-static const char* menuGetLtcOut() { return webui.ltcEnabled() ? "On" : "Off"; }
-static const char* menuGetOled()   { return webui.oledEnabled() ? "On" : "Off"; }
 static const char* menuGetMatrix() { return webui.matrixEnabled() ? "On" : "Off"; }
 static const char* menuGetBright() {
     static char buf[4];
     snprintf(buf, sizeof(buf), "%d", webui.brightness());
     return buf;
 }
-static void menuToggleLtcOut() { webui.setLtcEnabled(!webui.ltcEnabled()); }
-static void menuToggleOled()   { webui.setOledEnabled(!webui.oledEnabled()); oled.forceRedraw(); }
 static void menuToggleMatrix() { webui.setMatrixEnabled(!webui.matrixEnabled()); }
 static void menuCycleBright()  { webui.setBrightness((webui.brightness() + 1) % 16); }
-static void menuExit()         { menu.hide(); oled.forceRedraw(); }
 
 static void menuBuildItems() {
     menu.clear();
@@ -446,6 +449,19 @@ static void menuBuildItems() {
     menu.addItem("Exit",      nullptr,       menuExit);
     menu.setTimeout(15000);
 }
+#endif
+
+#if TCWL_HDMI
+static void menuBuildItems() {
+    menu.clear();
+    menu.addItem("FPS",       menuGetFps,    menuCycleFps);
+    menu.addItem("DropFr",    menuGetDf,     menuToggleDf);
+    menu.addItem("LTC Out",   menuGetLtcOut, menuToggleLtcOut);
+    menu.addItem("OLED",      menuGetOled,   menuToggleOled);
+    menu.addItem("Exit",      nullptr,       menuExit);
+    menu.setTimeout(15000);
+}
+#endif
 #endif
 
 // ---------------------------------------------------------------------------
@@ -635,6 +651,14 @@ static void hdmiSetup() {
     }
 #endif
 
+#if OLED_ENABLE && !defined(TCWL_CLAP)
+    btnUp.begin();
+    btnDown.begin();
+    btnOk.begin();
+    btnCancel.begin();
+    menuBuildItems();
+#endif
+
 #if FPS_AUTO_DETECT
     Serial.println(F("FPS auto-detect enabled."));
 #endif
@@ -659,6 +683,27 @@ static void hdmiSetup() {
 #if TCWL_HDMI
 static void hdmiLoop() {
     unsigned long now = millis();
+
+#if OLED_ENABLE && !defined(TCWL_CLAP)
+    btnUp.read();
+    btnDown.read();
+    btnOk.read();
+    btnCancel.read();
+
+    if (!menu.active()) {
+        if (btnUp.pressed() || btnDown.pressed() || btnOk.pressed() || btnCancel.pressed()) {
+            menu.show();
+        }
+    }
+
+    if (menu.active()) {
+        if (btnUp.pressed())      menu.up();
+        if (btnDown.pressed())    menu.down();
+        if (btnOk.released())     menu.ok(btnOk.heldFor(2000));
+        if (btnCancel.released()) { menu.cancel(); oled.forceRedraw(); }
+        if (!menu.tick())         oled.forceRedraw();
+    }
+#endif
 
     // AP health check
     static unsigned long lastApDiag = 0;
@@ -797,6 +842,11 @@ static void hdmiLoop() {
             fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
             oled.update(tcStr, ltc.fps(), hdmiOk, "HDMI", tcSource, bleTimecodeConnectedCount());
         }
+#if !defined(TCWL_CLAP)
+        if (menu.active() && webui.oledEnabled()) {
+            menu.draw();
+        }
+#endif
 #endif
 #if MAX7219_ENABLE
         if (webui.matrixEnabled()) {
