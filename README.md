@@ -52,14 +52,12 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 
 | Function | TC-WL-HDMI (ESP32-P4) | TC-WL-LTC (ESP32-C3) | TC-WL-CLAP (ESP32-C3) |
 |----------|----------------------|----------------------|----------------------|
-| **I2C SDA** | GPIO 7 | GPIO 4 | — |
-| **I2C SCL** | GPIO 8 | GPIO 5 | — |
-| **I2C devices** | TC358743 `0x0F`, OLED `0x3C`, DS3231 `0x68` | OLED `0x3C`, DS3231 `0x68` | — |
+| **I2C SDA** | GPIO 7 | GPIO 4 | GPIO 4 |
+| **I2C SCL** | GPIO 8 | GPIO 5 | GPIO 5 |
+| **I2C devices** | TC358743 `0x0F`, OLED `0x3C`, DS3231 `0x68` | OLED `0x3C`, DS3231 `0x68` | OLED `0x3C` |
 | **MAX7219 DIN** | — | — (GPIO 2 used for button) | GPIO 2 |
 | **MAX7219 CS** | — | — (GPIO 3 used for button) | GPIO 3 |
 | **MAX7219 CLK** | — | — | GPIO 10 |
-| **OLED SDA** | Shared with TC358743 I2C (GPIO 7) | Shared with RTC (GPIO 4) | GPIO 4 (dedicated I2C bus) |
-| **OLED SCL** | Shared with TC358743 I2C (GPIO 8) | Shared with RTC (GPIO 5) | GPIO 5 (dedicated I2C bus) |
 | **LTC output** | GPIO 6 | GPIO 6 | GPIO 6 |
 | **LTC input (master)** | — | GPIO 7 | — |
 | **Battery ADC (LiPo)** | GPIO 4 | GPIO 0 (A0) | — |
