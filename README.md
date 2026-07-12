@@ -12,7 +12,7 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 | **LTC generation** | Standalone SMPTE-12M biphase-mark encoder, esp_timer-driven, independent of I2C polling |
 | **Frame rates** | Auto-detected from HDMI (24/25/30/50/60 fps) or manual via web UI |
 | **RTC fallback** | Optional DS3231 preserves accurate time across power cycles with frame interpolation |
-| **LED matrix (LTC/CLAP)** | 8 daisy-chained MAX7219 8×8 modules (64×8 px), software SPI; runtime toggle in web UI; not available on HDMI |
+| **LED matrix (CLAP)** | 8 daisy-chained MAX7219 8×8 modules (64×8 px), software SPI; runtime toggle in web UI; not available on HDMI or LTC (GPIO conflict with buttons) |
 | **OLED display (optional)** | 128×64 SSD1306 on shared I2C bus: device name, battery gauge + runtime, big timecode, master/`F`/lock/`B` indicator, FPS mode/rate, LTC mode — controlled via 4 physical buttons on HDMI/LTC; CLAP shows main screen only (no buttons) |
 | **Web UI** | Fullscreen dark-teal SPA: timecode display, Auto/fixed FPS config, jam sync, brightness slider, matrix on/off, WiFi config |
 | **WiFi** | AP on boot; auto-STA connect to saved network; AP re-enables on disconnect |
@@ -76,7 +76,7 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 
 | Env | Board | Role | BLE | Platform |
 |-----|-------|------|-----|----------|
-| `TC-WL-LTC` | Seeed Studio XIAO ESP32-C3 | Dual-role: master (BLE server + LTC input) or slave (BLE client + LTC output), OLED + RTC, physical buttons, OLED menu | ✓ (native C3) | `pioarduino/platform-espressif32`† |
+| `TC-WL-LTC` | Seeed Studio XIAO ESP32-C3 | Dual-role: master (BLE server + LTC input) or slave (BLE client + LTC output), OLED + RTC, physical buttons, OLED menu; MAX7219 matrix not supported (GPIO conflict with buttons) | ✓ (native C3) | `pioarduino/platform-espressif32`† |
 | `TC-WL-CLAP` | ESP32-C3 Super Mini | BLE client, LED matrix + OLED, no physical buttons | ✓ (native C3) | `pioarduino/platform-espressif32`† |
 | `TC-WL-HDMI` | ESP32-P4-WIFI6 | HDMI receiver, BLE server, physical buttons + OLED menu | via C6 coprocessor‡ (ESP-Hosted SDIO) | `pioarduino/platform-espressif32`† |
 
@@ -113,7 +113,7 @@ src/main.cpp                   compile-time dispatch: TC-WL-HDMI/LTC/CLAP paths
 src/webui/                     WiFi AP/STA, HTTP server, NVS, embedded JS/CSS/HTML
 src/hdmi/                      TC358743 I2C driver + register map + GH5 timecode decoder
 src/ltc/                       esp_timer-based SMPTE-12M LTC generator
-src/matrix/                    MAX7219 64×8 framebuffer driver
+src/matrix/                    MAX7219 64×8 framebuffer driver (CLAP only)
 src/oled/                      optional SSD1306 via U8g2
 src/rtc/                       optional DS3231 RTC driver
 src/timecode/                  BLE HDMI (advertise/notify) & LTC (scan/select/connect/subscribe)
@@ -161,9 +161,8 @@ Open `http://192.168.4.1` (AP mode) or the ESP's STA IP. The header displays a c
 | Drop frame | Off | Off | Off |
 | RTC | Optional (DS3231) | Optional (DS3231) | Optional (DS3231) |
 | OLED | Optional (SSD1306) | Optional (SSD1306) | Optional (SSD1306) — main screen only (no buttons) |
-| MAX7219 matrix | Disabled (no hardware) | Off by default | Enabled by default |
-| Matrix brightness | N/A | 4 | 4 |
-| BLE indicator (matrix) | N/A | — | — |
+| MAX7219 matrix | Disabled (no hardware) | Disabled (GPIO conflict with buttons) | Enabled by default |
+| Matrix brightness | N/A | N/A | 4 |
 | LTC output pin | GPIO6 | GPIO6 | GPIO6 |
 | LTC input pin (master) | — | GPIO7 | — |
 | Physical buttons + OLED menu | GPIO 10/9/2/3 (UP/DOWN/OK/CANCEL) | GPIO 8/9/2/3 (UP/DOWN/OK/CANCEL) | — |

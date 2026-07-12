@@ -971,6 +971,7 @@ html,body{
     </label>
   </div>
 
+#if MAX7219_ENABLE
   <div class="setting-row">
     <span class="setting-label">Brightness</span>
     <div class="brightness-row">
@@ -978,6 +979,7 @@ html,body{
       <span class="brightness-val" id="brightness-val">4</span>
     </div>
   </div>
+#endif
 
 )rawliteral");
     html += F(R"rawliteral(
@@ -1171,6 +1173,7 @@ html,body{
   setInterval(pollWifi,2000);
   pollWifi();
 
+#if MAX7219_ENABLE
   // ── Brightness slider ──
   var brightnessSlider=document.getElementById('brightness-slider');
   var brightnessVal=document.getElementById('brightness-val');
@@ -1207,6 +1210,7 @@ html,body{
     x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
     x.send('val='+this.value);
   });
+#endif
 
   // ── Restart button ──
   window.restartEsp=function(){
