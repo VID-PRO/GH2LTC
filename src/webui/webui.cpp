@@ -528,6 +528,9 @@ void WebUI::handleRoot() {
         html.replace("__STA_SSID__", "—");
         html.replace("__STA_IP__",   "—");
     }
+    _server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    _server.sendHeader("Pragma", "no-cache");
+    _server.sendHeader("Expires", "0");
     _server.send(200, "text/html", html);
 }
 
@@ -927,8 +930,19 @@ html,body{
 
 <div class="header">
   <div class="header-left">
+)rawliteral");
+#if TCWL_HDMI
+html += F(R"rawliteral(
     <span class="status-dot hdmi" id="status-dot"></span>
     <span id="source-label">HDMI</span>
+)rawliteral");
+#else
+html += F(R"rawliteral(
+    <span class="status-dot free" id="status-dot"></span>
+    <span id="source-label">FREE</span>
+)rawliteral");
+#endif
+html += F(R"rawliteral(
   </div>
   <a class="header-brand" href="https://www.vid-pro.de" target="_blank" rel="noopener">VID-PRO</a>
   <div class="header-right">
@@ -939,7 +953,18 @@ html,body{
 <div class="tc-area">
   <div class="tc-wrap">
     <div class="tc-label">Timecode</div>
+)rawliteral");
+#if TCWL_HDMI
+html += F(R"rawliteral(
     <div id="tc-display" class="hdmi">00:00:00:00:00</div>
+)rawliteral");
+#else
+html += F(R"rawliteral(
+    <div id="tc-display" class="free">00:00:00:00:00</div>
+)rawliteral");
+#endif
+html += F(R"rawliteral(
+
   </div>
   <div class="footer">
     <div class="settings-btn" id="settings-btn" onclick="toggleSettings()">&#9881;</div>
@@ -1112,6 +1137,7 @@ html,body{
 
 <script>
 (function(){
+  try{
   // ── DOM refs ──
   var tcEl=document.getElementById('tc-display');
   var dotEl=document.getElementById('status-dot');
@@ -1257,11 +1283,13 @@ html,body{
       }
     });
   });
+}catch(e){console.error('TC-WL init:',e)}
 })();
 
 function toggleSettings(){
   var p=document.getElementById('settings-panel');
   var b=document.getElementById('settings-btn');
+  if(!p||!b)return;
   p.classList.toggle('open');
   b.classList.toggle('active');
 }
