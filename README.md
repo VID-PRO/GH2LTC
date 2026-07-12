@@ -60,10 +60,10 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 | **MAX7219 CLK** | — | — | GPIO 10 |
 | **LTC output** | GPIO 6 | GPIO 6 | GPIO 6 |
 | **LTC input (master)** | — | GPIO 7 | — |
-| **Button UP** | — | GPIO 8 | — |
-| **Button DOWN** | — | GPIO 9 | — |
-| **Button OK** | — | GPIO 2 | — |
-| **Button CANCEL** | — | GPIO 3 | — |
+| **Button UP** | GPIO 10 | GPIO 8 | — |
+| **Button DOWN** | GPIO 9 | GPIO 9 | — |
+| **Button OK** | GPIO 2 | GPIO 2 | — |
+| **Button CANCEL** | GPIO 3 | GPIO 3 | — |
 | **TC358743 reset** | GPIO -1 (unused) | — | — |
 | **CSI connector** | 22-pin to TC358743 | — | — |
 
@@ -77,7 +77,7 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 |-----|-------|------|-----|----------|
 | `TC-WL-LTC` | Seeed Studio XIAO ESP32-C3 | Dual-role: master (BLE server + LTC input) or slave (BLE client + LTC output), OLED + RTC, physical buttons, OLED menu | ✓ (native C3) | `pioarduino/platform-espressif32`† |
 | `TC-WL-CLAP` | ESP32-C3 Super Mini | BLE client, LED matrix only | ✓ (native C3) | `pioarduino/platform-espressif32`† |
-| `TC-WL-HDMI` | ESP32-P4-WIFI6 | HDMI receiver, BLE server | via C6 coprocessor‡ (ESP-Hosted SDIO) | `pioarduino/platform-espressif32`† |
+| `TC-WL-HDMI` | ESP32-P4-WIFI6 | HDMI receiver, BLE server, physical buttons + OLED menu | via C6 coprocessor‡ (ESP-Hosted SDIO) | `pioarduino/platform-espressif32`† |
 
 † Pinned to GitHub: `https://github.com/pioarduino/platform-espressif32.git` (needed for ESP32-P4 `esp_timer` API compatibility; also used by LTC/CLAP for consistency)
 ‡ ESP32-P4 has no native BLE controller. The Waveshare board's ESP32-C6 companion provides WiFi/BLE over SDIO via ESP-Hosted firmware (pre-flashed). All BLE code uses preprocessor guards (`SOC_BLE_SUPPORTED \|\| CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE`) to compile correctly on P4.
@@ -163,7 +163,7 @@ Open `http://192.168.4.1` (AP mode) or the ESP's STA IP. The header displays a c
 | BLE indicator (matrix) | N/A | 3-pixel dot (bottom-left) when connected | 3-pixel dot (bottom-left) when connected |
 | LTC output pin | GPIO6 | GPIO6 | GPIO6 |
 | LTC input pin (master) | — | GPIO7 | — |
-| Physical buttons + OLED menu | — | GPIO 8/9/18/19 (UP/DOWN/OK/CANCEL) | — |
+| Physical buttons + OLED menu | GPIO 10/9/2/3 (UP/DOWN/OK/CANCEL) | GPIO 8/9/2/3 (UP/DOWN/OK/CANCEL) | — |
 | TC_RESET_PIN | -1 (unused) | — | — |
 | Reverse-engineer mode | 0 (set to 1 in `config_tcwl_hdmi.h`) | — | — |
 | BLE role | Server (advertise + notify) | Configurable: master (server + LTC input) or slave (client + LTC output) | Client (scan + subscribe) |
@@ -180,7 +180,7 @@ A custom 128-bit BLE service (`9a6f0001-...`) transfers timecode from HDMI to LT
 - **TC-WL-LTC (master)**: same BLE server role as HDMI — receives LTC audio via GPIO 7 decoder, advertises timecode over BLE. No HDMI hardware needed; can act as a standalone LTC-to-BLE bridge for slave units.
 - **LTC/CLAP (slave)**: scans for devices offering the service (showing name + address), taps one to connect. On receiving a timecode packet it jams the local `LtcEncoder` in real time. The web UI displays the connected server's device name.
 
-LTC hardware runs its own LTC generator, MAX7219 matrix, OLED, web UI, and physical buttons with on-device menu. In master mode it decodes LTC from GPIO 7 and acts as a BLE timecode server; in slave mode it receives timecode via BLE and generates standalone LTC output. CLAP is client-only (no LTC input/output, LED matrix only). The HDMI board has no MAX7219 hardware and relies on the OLED for status display.
+LTC hardware runs its own LTC generator, MAX7219 matrix, OLED, web UI, and physical buttons with on-device menu. In master mode it decodes LTC from GPIO 7 and acts as a BLE timecode server; in slave mode it receives timecode via BLE and generates standalone LTC output. CLAP is client-only (no LTC input/output, LED matrix only). The HDMI board has no MAX7219 hardware and uses the OLED for status display plus a menu system controlled by four physical buttons.
 
 ---
 
