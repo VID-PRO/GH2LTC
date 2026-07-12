@@ -49,7 +49,7 @@ static void fmtTcStr(uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff) {
 static OledDisplay oled;
 static char gDeviceName[33] = "";
 
-#if OLED_ENABLE && !defined(TCWL_CLAP)
+#if OLED_ENABLE && BTN_UP_PIN >= 0
 static Button btnUp(BTN_UP_PIN);
 static Button btnDown(BTN_DOWN_PIN);
 static Button btnOk(BTN_OK_PIN);
@@ -382,7 +382,7 @@ static void onLtcDecoded(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_t
 static unsigned long lastDecodedFrameMs = 0;
 #endif
 
-#if OLED_ENABLE && !defined(TCWL_CLAP)
+#if OLED_ENABLE && BTN_UP_PIN >= 0
 // ── Shared OLED menu helpers ──────────────────────────────────
 static void menuSaveFps(uint8_t fps, bool df) {
     ltc.setFps(fps, df);
@@ -681,7 +681,7 @@ static void hdmiSetup() {
     }
 #endif
 
-#if OLED_ENABLE && !defined(TCWL_CLAP)
+#if OLED_ENABLE && BTN_UP_PIN >= 0
     btnUp.begin();
     btnDown.begin();
     btnOk.begin();
@@ -714,7 +714,7 @@ static void hdmiSetup() {
 static void hdmiLoop() {
     unsigned long now = millis();
 
-#if OLED_ENABLE && !defined(TCWL_CLAP)
+#if OLED_ENABLE && BTN_UP_PIN >= 0
     btnUp.read();
     btnDown.read();
     btnOk.read();
@@ -872,7 +872,7 @@ static void hdmiLoop() {
             fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
             oled.update(tcStr, ltc.fps(), hdmiOk, gDeviceName, webui.autoFps(), "OUT", 0, readBatteryPct(), 'H');
         }
-#if !defined(TCWL_CLAP)
+#if BTN_UP_PIN >= 0
         if (menu.active() && webui.oledEnabled()) {
             menu.draw();
         }
@@ -907,7 +907,7 @@ static void ltcSetup() {
     ltc.begin();
     ltc.setTime(0, 0, 0, 0);
 
-#if defined(TCWL_LTC) && OLED_ENABLE && !defined(TCWL_CLAP)
+#if defined(TCWL_LTC) && OLED_ENABLE && BTN_UP_PIN >= 0
     btnUp.begin();
     btnDown.begin();
     btnOk.begin();
@@ -973,7 +973,7 @@ static void ltcSetup() {
 // Slave-specific: loop
 // ===========================================================================
 static void ltcLoop() {
-#if defined(TCWL_LTC) && OLED_ENABLE && !defined(TCWL_CLAP)
+#if defined(TCWL_LTC) && OLED_ENABLE && BTN_UP_PIN >= 0
     btnUp.read();
     btnDown.read();
     btnOk.read();
@@ -1019,7 +1019,7 @@ static void ltcLoop() {
             fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
             oled.update(tcStr, ltc.fps(), ltcDecoder.locked(), gDeviceName, webui.autoFps(), "IN", 0, readBatteryPct(), 'L');
         }
-#if defined(TCWL_LTC) && !defined(TCWL_CLAP)
+#if defined(TCWL_LTC) && BTN_UP_PIN >= 0
         if (menu.active() && webui.oledEnabled()) {
             menu.draw();
         }
@@ -1068,7 +1068,7 @@ static void ltcLoop() {
             bool bleOk = bleTimecodeConnected();
             oled.update(tcStr, ltc.fps(), bleOk, gDeviceName, webui.autoFps(), "OUT", 0, readBatteryPct());
         }
-#if defined(TCWL_LTC) && !defined(TCWL_CLAP)
+#if defined(TCWL_LTC) && BTN_UP_PIN >= 0
         if (menu.active() && webui.oledEnabled()) {
             menu.draw();
         }

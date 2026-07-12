@@ -28,3 +28,7 @@
 #define BTN_OK_PIN        2
 #define BTN_CANCEL_PIN    3
 
+// Battery ADC (LiPo via voltage divider)
+#undef BAT_ADC_PIN
+#define BAT_ADC_PIN           4
+
