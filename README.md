@@ -45,7 +45,7 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 | **MAX7219 8×8 LED matrix** | 8 daisy-chained modules (64×8 px) |
 | **DS3231 RTC (optional)** | I2C |
 | **128×64 OLED SSD1306 (optional)** | I2C |
-| **3.5mm TRS jack** | LTC audio output |
+| **3.5mm TRS jack** | LTC audio in/output |
 | **Passives** | Same RC filter as HDMI board |
 
 ### Pinout
