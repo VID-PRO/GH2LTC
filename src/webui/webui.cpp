@@ -995,8 +995,10 @@ html += F(R"rawliteral(
       <span class="toggle-label" id="df-label">Off</span>
     </label>
   </div>
+)rawliteral");
 
 #if MAX7219_ENABLE
+html += F(R"rawliteral(
   <div class="setting-row">
     <span class="setting-label">Brightness</span>
     <div class="brightness-row">
@@ -1004,9 +1006,9 @@ html += F(R"rawliteral(
       <span class="brightness-val" id="brightness-val">4</span>
     </div>
   </div>
+)rawliteral");
 #endif
 
-)rawliteral");
     html += F(R"rawliteral(
   <div class="setting-row">
     <span class="setting-label">Jam Time</span>
@@ -1199,7 +1201,9 @@ html += F(R"rawliteral(
   setInterval(pollWifi,2000);
   pollWifi();
 
+)rawliteral"));
 #if MAX7219_ENABLE
+    html += String(F(R"rawliteral(
   // ── Brightness slider ──
   var brightnessSlider=document.getElementById('brightness-slider');
   var brightnessVal=document.getElementById('brightness-val');
@@ -1236,7 +1240,9 @@ html += F(R"rawliteral(
     x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
     x.send('val='+this.value);
   });
+)rawliteral"));
 #endif
+    html += String(F(R"rawliteral(
 
   // ── Restart button ──
   window.restartEsp=function(){

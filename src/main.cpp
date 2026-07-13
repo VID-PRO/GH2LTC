@@ -1004,6 +1004,10 @@ static void ltcLoop() {
         uint16_t frames = ltc.framesCompleted();
         if (frames > 0) {
             bool signalOk = ltcDecoder.locked() && (now - lastDecodedFrameMs < 2000);
+            if (frames && (frames & 0xF) == 0) {
+                Serial.printf("[TC] frames=%u tc=%02u:%02u:%02u:%02u:%02u locked=%d\n",
+                    frames, ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff(), ltcDecoder.locked());
+            }
             if (!signalOk) {
                 while (frames--) ltc.tick();
                 strcpy(tcSource, "FREE");
@@ -1011,7 +1015,14 @@ static void ltcLoop() {
                 strcpy(tcSource, "LTC-IN");
             }
 
-            bleTimecodeUpdate(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
+                    bleTimecodeUpdate(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
+        } else {
+            static unsigned long lastNoFrameLog = 0;
+            if (now - lastNoFrameLog > 5000) {
+                lastNoFrameLog = now;
+                Serial.printf("[TC] no frames for 5s tc=%02u:%02u:%02u:%02u:%02u\n",
+                    ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
+            }
         }
 
         if (ltcDecoder.locked()) lastDecodedFrameMs = now;
