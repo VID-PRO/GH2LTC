@@ -41,7 +41,7 @@ static void drawWifiIcon(Adafruit_SSD1306 &d, int x, int y) {
     d.fillRect(x + 3, y + 6, 2, 2, SSD1306_WHITE);
 }
 
-void OledDisplay::update(const char *timecode, uint8_t fps, bool locked,
+void OledDisplay::update(const char *timecode, uint8_t fps, uint8_t lockState,
                          const char *deviceName, bool autoFps,
                          const char *ltcMode, uint8_t slaveCount,
                          uint8_t batteryPct, uint8_t masterIndicator) {
@@ -133,9 +133,9 @@ void OledDisplay::update(const char *timecode, uint8_t fps, bool locked,
     _display.setCursor((12 - w) / 2, by + 2);
     _display.print(mStr);
 
-    // Box 2: Lock indicator (L = locked, F = free)
+    // Box 2: Lock indicator (L = locked, F = free, R = free from RTC)
     _display.drawRect(14, by, 12, bh, SSD1306_WHITE);
-    char lockCh = locked ? 'L' : 'F';
+    char lockCh = lockState == 1 ? 'L' : (lockState == 2 ? 'R' : 'F');
     char lockStr[2] = { lockCh, '\0' };
     _display.getTextBounds(lockStr, 0, 0, &x1, &y1, &w, &h);
     _display.setCursor(14 + (12 - w) / 2, by + 2);

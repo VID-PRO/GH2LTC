@@ -1,5 +1,6 @@
 #include "webui.h"
 #include "../timecode/ble_timecode.h"
+#include <Update.h>
 
 WebUI::WebUI() : _server(80) {
     _apSsid[0] = '\0';
@@ -16,7 +17,7 @@ void WebUI::begin(const char *apSsid, const char *apPassword,
     strncpy(_apSsid, apSsid, sizeof(_apSsid) - 1);
     strncpy(_apPassword, apPassword ? apPassword : "", sizeof(_apPassword) - 1);
 
-    _prefs.begin("webui", true);
+    _prefs.begin("webui", false);
     _wifiEnabled = _prefs.getBool("wifi_en", true);
     _prefs.end();
 
@@ -65,6 +66,9 @@ void WebUI::begin(const char *apSsid, const char *apPassword,
     _server.on("/api/wifi",  HTTP_ANY,  std::bind(&WebUI::handleApiWifi,  this));
     _server.on("/api/ble",   HTTP_ANY,  std::bind(&WebUI::handleApiBle,   this));
     _server.on("/api/mode",  HTTP_ANY,  std::bind(&WebUI::handleApiMode,  this));
+    _server.on("/api/update", HTTP_POST,
+               std::bind(&WebUI::handleApiUpdate, this),
+               std::bind(&WebUI::handleApiUpdateUpload, this));
     _server.onNotFound(      std::bind(&WebUI::handleNotFound, this));
 
     _server.begin();
@@ -320,6 +324,40 @@ void WebUI::handleApiRestart() {
     _server.send(200, "application/json", "{\"ok\":true}");
     delay(100);
     ESP.restart();
+}
+
+// -----------------------------------------------------------------------
+// POST /api/update  — firmware OTA update (multipart file upload)
+// -----------------------------------------------------------------------
+void WebUI::handleApiUpdate() {
+    // Called once when upload completes
+    if (_server.method() != HTTP_POST) {
+        _server.send(405);
+        return;
+    }
+    _server.send(200, "application/json", "{\"ok\":true}");
+    delay(100);
+    ESP.restart();
+}
+
+void WebUI::handleApiUpdateUpload() {
+    HTTPUpload &upload = _server.upload();
+    if (upload.status == UPLOAD_FILE_START) {
+        Serial.printf("Firmware update: %s (%u bytes)\n", upload.filename.c_str(), upload.totalSize);
+        if (!Update.begin(upload.totalSize)) {
+            Update.printError(Serial);
+        }
+    } else if (upload.status == UPLOAD_FILE_WRITE) {
+        if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+            Update.printError(Serial);
+        }
+    } else if (upload.status == UPLOAD_FILE_END) {
+        if (Update.end(true)) {
+            Serial.printf("Firmware update OK (%u bytes), rebooting...\n", upload.totalSize);
+        } else {
+            Update.printError(Serial);
+        }
+    }
 }
 
 // -----------------------------------------------------------------------
@@ -1080,8 +1118,6 @@ html += F(R"rawliteral(
     AP <span>__AP_SSID__</span> &nbsp;|&nbsp; <span>__AP_IP__</span><br>
     STA <span>__STA_SSID__</span> &nbsp;|&nbsp; <span>__STA_IP__</span>
   </div>
-
-  <button class="restart-btn" onclick="restartEsp()">Restart Device</button>
 )rawliteral");
 #if defined(TCWL_LTC) && !defined(TCWL_CLAP)
     html += F(R"rawliteral(
@@ -1164,7 +1200,18 @@ html += F(R"rawliteral(
 #endif
 
     // Part 3: close settings-panel and common JS
-    html += String(F(R"rawliteral(</div>
+    html += String(F(R"rawliteral(
+  <button class="restart-btn" onclick="restartEsp()">Restart Device</button>
+
+  <div class="settings-title">Firmware Update</div>
+  <div class="setting-row">
+    <form id="update-form" enctype="multipart/form-data" method="post">
+      <input type="file" id="fw-file" accept=".bin" style="width:100%;margin-bottom:6px">
+      <button class="restart-btn" type="button" onclick="uploadFirmware()">Upload &amp; Update</button>
+      <div id="update-status" style="margin-top:4px;font-size:14px"></div>
+    </form>
+  </div>
+</div>
 
 <script>
 (function(){
@@ -1279,6 +1326,29 @@ html += F(R"rawliteral(
     var x=new XMLHttpRequest();
     x.open('POST','/api/restart',true);
     x.send();
+  };
+
+  // ── Firmware update ──
+  window.uploadFirmware=function(){
+    var fileInput=document.getElementById('fw-file');
+    if(!fileInput.files||!fileInput.files[0]){document.getElementById('update-status').textContent='Select a .bin file';return;}
+    var file=fileInput.files[0];
+    if(!file.name.endsWith('.bin')){document.getElementById('update-status').textContent='Please select a .bin file';return;}
+    var statusEl=document.getElementById('update-status');
+    statusEl.textContent='Uploading...';
+    var formData=new FormData();
+    formData.append('fw',file);
+    var x=new XMLHttpRequest();
+    x.upload.addEventListener('progress',function(e){
+      if(e.lengthComputable)statusEl.textContent='Uploading... '+(e.loaded/e.total*100).toFixed(0)+'%';
+    });
+    x.addEventListener('load',function(){
+      if(x.status===200)statusEl.textContent='Update OK, rebooting...';
+      else statusEl.textContent='Error: '+x.status;
+    });
+    x.addEventListener('error',function(){statusEl.textContent='Upload failed';});
+    x.open('POST','/api/update',true);
+    x.send(formData);
   };
 
   // ── FPS buttons ──

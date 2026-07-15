@@ -9,7 +9,7 @@ int bleGetMode() { return TCWL_HDMI; }
 void bleSetMode(int) {}
 
 void bleTimecodeInit() {
-    blePrefs.begin("ble", true);
+    blePrefs.begin("ble", false);
     String saved = blePrefs.getString("name", "TC-WL-HDMI");
     blePrefs.end();
     strncpy(bleName, saved.c_str(), sizeof(bleName) - 1);

@@ -98,5 +98,7 @@ private:
     void handleApiWifi();
     void handleApiBle();
     void handleApiMode();
+    void handleApiUpdate();
+    void handleApiUpdateUpload();
     void handleNotFound();
 };

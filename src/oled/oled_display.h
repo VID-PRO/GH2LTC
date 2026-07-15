@@ -18,7 +18,7 @@ class OledDisplay {
 public:
     OledDisplay();
     bool begin();
-    void update(const char *timecode, uint8_t fps, bool locked,
+    void update(const char *timecode, uint8_t fps, uint8_t lockState,
                 const char *deviceName, bool autoFps, const char *ltcMode,
                 uint8_t slaveCount = 0, uint8_t batteryPct = 255,
                 uint8_t masterIndicator = 0);

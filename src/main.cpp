@@ -48,7 +48,7 @@ static char tcStr[13] = "00:00:00:00";
 
 static int getMasterRole() {
     Preferences p;
-    p.begin("ltc", true);
+    p.begin("ltc", false);
     int role = p.getUChar("m_role", MASTER_ROLE_IN);
     p.end();
     return role;
@@ -575,7 +575,7 @@ static void hdmiSetup() {
     // Load persisted FPS/DF from NVS
     {
         Preferences prefs;
-        prefs.begin("ltc", true);
+        prefs.begin("ltc", false);
         uint8_t savedFps = prefs.getUChar("fps", LTC_FPS);
         bool savedDf = prefs.getBool("df", LTC_DROP_FRAME);
         prefs.end();
@@ -866,7 +866,7 @@ static void hdmiLoop() {
 #if OLED_ENABLE
         if (webui.oledEnabled()) {
             fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
-            oled.update(tcStr, ltc.fps(), hdmiOk, gDeviceName, webui.autoFps(), "OUT", 0, readBatteryPct(), 'M');
+            oled.update(tcStr, ltc.fps(), hdmiOk ? 1 : (rtcPresent ? 2 : 0), gDeviceName, webui.autoFps(), "OUT", 0, readBatteryPct(), 'M');
         }
 #if BTN_UP_PIN >= 0
         if (menu.active() && webui.oledEnabled()) {
@@ -1059,7 +1059,7 @@ static void ltcLoop() {
 #if OLED_ENABLE
         if (webui.oledEnabled()) {
             fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
-            oled.update(tcStr, ltc.fps(), decoderActive ? ltcDecoder.locked() : false,
+            oled.update(tcStr, ltc.fps(), (decoderActive && ltcDecoder.locked()) ? 1 : (rtcPresent ? 2 : 0),
                         gDeviceName, webui.autoFps(), masterRoleStr(role), 0,
                         readBatteryPct(), 'M');
         }
@@ -1109,8 +1109,8 @@ static void ltcLoop() {
 #if OLED_ENABLE
         if (webui.oledEnabled()) {
             fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
-            bool bleOk = bleTimecodeConnected();
-            oled.update(tcStr, ltc.fps(), bleOk, gDeviceName, webui.autoFps(), "OUT", 0, readBatteryPct(), 'S');
+            uint8_t lockSt = bleTimecodeConnected() ? 1 : (rtcPresent ? 2 : 0);
+            oled.update(tcStr, ltc.fps(), lockSt, gDeviceName, webui.autoFps(), "OUT", 0, readBatteryPct(), 'S');
         }
 #if defined(TCWL_LTC) && BTN_UP_PIN >= 0
         if (menu.active() && webui.oledEnabled()) {
@@ -1139,6 +1139,20 @@ static void ltcLoop() {
 // setup()
 // ===========================================================================
 void setup() {
+    // Drive MAX7219 SPI pins safe IMMEDIATELY — before any delays, before
+    // Serial.  On ESP32-C3, GPIO 2 (MAX7219 DIN) is a strapping pull-up, and
+    // CS/CLK are undefined during boot; if CS floats low the MAX7219 latches
+    // garbage and lights all LEDs.  Low-power USB ports exacerbate this because
+    // the voltage ramp is slower.
+#if MAX7219_ENABLE
+    pinMode(MAX7219_CS_PIN,  OUTPUT);
+    digitalWrite(MAX7219_CS_PIN, HIGH);
+    pinMode(MAX7219_DIN_PIN, OUTPUT);
+    digitalWrite(MAX7219_DIN_PIN, LOW);
+    pinMode(MAX7219_CLK_PIN, OUTPUT);
+    digitalWrite(MAX7219_CLK_PIN, LOW);
+#endif
+
     Serial.begin(115200);
     for (int i = 0; i < 200 && !Serial; i++) delay(10);
 

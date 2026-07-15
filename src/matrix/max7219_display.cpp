@@ -41,6 +41,18 @@ Max7219Display::Max7219Display(uint8_t csPin, uint8_t numModules)
 }
 
 void Max7219Display::begin() {
+    // Drive SPI pins to safe states BEFORE SPI.begin() to prevent
+    // the MAX7219 from latching garbage if CS was floating low during
+    // boot (GPIO 2 is a strapping pin on ESP32-C3 and may be driven high
+    // by the bootloader, while CS/CLK may be undefined).
+    pinMode(MAX7219_CS_PIN,  OUTPUT);
+    digitalWrite(MAX7219_CS_PIN, HIGH);
+    pinMode(MAX7219_DIN_PIN, OUTPUT);
+    digitalWrite(MAX7219_DIN_PIN, LOW);
+    pinMode(MAX7219_CLK_PIN, OUTPUT);
+    digitalWrite(MAX7219_CLK_PIN, LOW);
+    delay(1);
+
     SPI.begin(MAX7219_CLK_PIN, -1, MAX7219_DIN_PIN, -1);
     _mx.begin();
     _mx.control(MD_MAX72XX::INTENSITY, 4);
