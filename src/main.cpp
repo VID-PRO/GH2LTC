@@ -899,17 +899,6 @@ static void ltcSetup() {
 #if OLED_ENABLE || RTC_ENABLE
     Wire.begin(TC_I2C_SDA_PIN, TC_I2C_SCL_PIN, 100000);
     delay(50);
-    // Test: can we write ANYTHING on the I2C bus right after init?
-    {
-        uint32_t freq;
-        esp_err_t r = i2cGetClock(0, &freq);
-        Serial.printf("I2C test: i2cIsInit=%d freq=%lu ret=%d\n", i2cIsInit(0), freq, r);
-        Wire.beginTransmission(0x3C);
-        Wire.write((uint8_t)0x00);
-        Wire.write((uint8_t)0xAE);
-        uint8_t err = Wire.endTransmission();
-        Serial.printf("I2C test write to 0x3C: err=%d\n", err);
-    }
 #endif
 
     ltc.begin();
@@ -1158,23 +1147,11 @@ void setup() {
     printResetReason();
     initBatteryAdc();
 
-    // Set I2C pins before any library call initialises the bus.
     Wire.setPins(TC_I2C_SDA_PIN, TC_I2C_SCL_PIN);
 
-    // Init I2C early and test it.
     Wire.begin(TC_I2C_SDA_PIN, TC_I2C_SCL_PIN, 100000);
-    {
-        Wire.beginTransmission(0x3C);
-        uint8_t probeErr = Wire.endTransmission();  // size=0 → i2c_master_probe
-        Wire.beginTransmission(0x3C);
-        Wire.write((uint8_t)0x00);
-        Wire.write((uint8_t)0xAE);
-        uint8_t writeErr = Wire.endTransmission();
-        Serial.printf("I2C test: probe=0x%02X write=0x%02X\n", probeErr, writeErr);
-    }
 #if OLED_ENABLE
     oled.begin();
-    Serial.println(F("OLED started (early)"));
 #endif
 
     // Kick H2 coprocessor firmware load early so the long init sequence below

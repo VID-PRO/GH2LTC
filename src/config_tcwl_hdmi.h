@@ -20,7 +20,7 @@
 #define MAX7219_ENABLE        0
 
 // Reverse‑engineer mode (dump GH5 InfoFrame packets over serial to decode byte layout)
-#define REVERSE_ENGINEER_MODE 1
+#define REVERSE_ENGINEER_MODE 0
 
 // Button pins — GPIO 8 is used for I2C SCL on HDMI, so UP is moved to GPIO 10.
 // GPIO 2, 3, 10 are free because MAX7219 is disabled.

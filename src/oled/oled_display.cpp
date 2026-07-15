@@ -22,24 +22,13 @@ bool OledDisplay::begin() {
     int16_t x1, y1;
     uint16_t w, h;
 
-    _display.getTextBounds("HDMI2LTC", 0, 0, &x1, &y1, &w, &h);
+    _display.getTextBounds("TC-WL", 0, 0, &x1, &y1, &w, &h);
     _display.setCursor((128 - w) / 2, 0);
-    _display.print("HDMI2LTC");
+    _display.print("TC-WL");
 
-    const char *role =
-#if TCWL_HDMI
-        "HDMI"
-#elif TCWL_LTC
-        "LTC"
-#else
-        "?"
-#endif
-        ;
-    char bottom[24];
-    snprintf(bottom, sizeof(bottom), "%s  --  --", role);
-    _display.getTextBounds(bottom, 0, 0, &x1, &y1, &w, &h);
+    _display.getTextBounds("(c) by VID-PRO", 0, 0, &x1, &y1, &w, &h);
     _display.setCursor((128 - w) / 2, 54);
-    _display.print(bottom);
+    _display.print("(c) by VID-PRO");
 
     _display.display();
     _present = true;
