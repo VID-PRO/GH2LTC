@@ -866,7 +866,7 @@ static void hdmiLoop() {
 #if OLED_ENABLE
         if (webui.oledEnabled()) {
             fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
-            oled.update(tcStr, ltc.fps(), hdmiOk, gDeviceName, webui.autoFps(), "OUT", 0, readBatteryPct(), hdmiOk ? 'H' : 'F');
+            oled.update(tcStr, ltc.fps(), hdmiOk, gDeviceName, webui.autoFps(), "OUT", 0, readBatteryPct(), 'M');
         }
 #if BTN_UP_PIN >= 0
         if (menu.active() && webui.oledEnabled()) {
@@ -1061,7 +1061,7 @@ static void ltcLoop() {
             fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
             oled.update(tcStr, ltc.fps(), decoderActive ? ltcDecoder.locked() : false,
                         gDeviceName, webui.autoFps(), masterRoleStr(role), 0,
-                        readBatteryPct(), decoderActive && ltcDecoder.locked() ? 'L' : 'F');
+                        readBatteryPct(), 'M');
         }
 #if defined(TCWL_LTC) && BTN_UP_PIN >= 0
         if (menu.active() && webui.oledEnabled()) {
@@ -1110,7 +1110,7 @@ static void ltcLoop() {
         if (webui.oledEnabled()) {
             fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
             bool bleOk = bleTimecodeConnected();
-            oled.update(tcStr, ltc.fps(), bleOk, gDeviceName, webui.autoFps(), "OUT", 0, readBatteryPct());
+            oled.update(tcStr, ltc.fps(), bleOk, gDeviceName, webui.autoFps(), "OUT", 0, readBatteryPct(), 'S');
         }
 #if defined(TCWL_LTC) && BTN_UP_PIN >= 0
         if (menu.active() && webui.oledEnabled()) {

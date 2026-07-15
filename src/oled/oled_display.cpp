@@ -125,42 +125,43 @@ void OledDisplay::update(const char *timecode, uint8_t fps, bool locked,
     _display.setTextSize(1);
     const int by = 46, bh = 12;
 
-    // Box 1: master indicator (H/L), lock icon (B), or free (F)
-    _display.drawRect(0, by, 14, bh, SSD1306_WHITE);
-    char mCh;
-    if (masterIndicator) {
-        mCh = (char)masterIndicator;
-    } else if (locked) {
-        mCh = 'B';
-    } else {
-        mCh = 'F';
-    }
+    // Box 1: M (Master) or S (Slave)
+    _display.drawRect(0, by, 12, bh, SSD1306_WHITE);
+    char mCh = masterIndicator ? (char)masterIndicator : 'S';
     char mStr[2] = { mCh, '\0' };
     _display.getTextBounds(mStr, 0, 0, &x1, &y1, &w, &h);
-    _display.setCursor((14 - w) / 2, by + 2);
+    _display.setCursor((12 - w) / 2, by + 2);
     _display.print(mStr);
 
-    // Box 2: A/M
-    _display.drawRect(16, by, 16, bh, SSD1306_WHITE);
+    // Box 2: Lock indicator
+    _display.drawRect(14, by, 12, bh, SSD1306_WHITE);
+    char lockCh = locked ? 'L' : ' ';
+    char lockStr[2] = { lockCh, '\0' };
+    _display.getTextBounds(lockStr, 0, 0, &x1, &y1, &w, &h);
+    _display.setCursor(14 + (12 - w) / 2, by + 2);
+    _display.print(lockStr);
+
+    // Box 3: A/M
+    _display.drawRect(28, by, 14, bh, SSD1306_WHITE);
     char modeCh[2] = { autoFps ? 'A' : 'M', '\0' };
     _display.getTextBounds(modeCh, 0, 0, &x1, &y1, &w, &h);
-    _display.setCursor(16 + (16 - w) / 2, by + 2);
+    _display.setCursor(28 + (14 - w) / 2, by + 2);
     _display.print(modeCh);
 
-    // Box 3: fps
-    _display.drawRect(34, by, 42, bh, SSD1306_WHITE);
+    // Box 4: fps
+    _display.drawRect(44, by, 42, bh, SSD1306_WHITE);
     char fpsStr[8];
     snprintf(fpsStr, sizeof(fpsStr), "%dfps", fps);
     _display.getTextBounds(fpsStr, 0, 0, &x1, &y1, &w, &h);
-    _display.setCursor(34 + (42 - w) / 2, by + 2);
+    _display.setCursor(44 + (42 - w) / 2, by + 2);
     _display.print(fpsStr);
 
-    // Box 4: LTC mode
-    _display.drawRect(78, by, 50, bh, SSD1306_WHITE);
+    // Box 5: LTC mode (first letter: O = OUT, I = IN)
+    _display.drawRect(88, by, 40, bh, SSD1306_WHITE);
     char ltcFull[12];
-    snprintf(ltcFull, sizeof(ltcFull), "LTC %s", ltcMode);
+    snprintf(ltcFull, sizeof(ltcFull), "LTC %c", ltcMode[0]);
     _display.getTextBounds(ltcFull, 0, 0, &x1, &y1, &w, &h);
-    _display.setCursor(78 + (50 - w) / 2, by + 2);
+    _display.setCursor(88 + (40 - w) / 2, by + 2);
     _display.print(ltcFull);
 
     _display.display();
