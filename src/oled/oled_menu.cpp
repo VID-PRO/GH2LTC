@@ -75,54 +75,70 @@ void OledMenu::cancel() {
 
 void OledMenu::draw() {
     if (!_active) return;
-    auto &u = _display.u8g2();
 
-    u.firstPage();
-    do {
-        u.setFont(u8g2_font_6x10_tf);
-        int w = u.getStrWidth(" SETTINGS ");
-        u.drawStr((128 - w) / 2, 9, " SETTINGS ");
+    auto &d = _display.display();
+    d.clearDisplay();
+    d.setTextColor(SSD1306_WHITE);
+    d.setFont(NULL);
+    d.setTextSize(1);
 
-        for (uint8_t i = 0; i < VISIBLE; i++) {
-            int idx = _scroll + i;
-            if (idx >= _count) break;
+    int16_t x1, y1;
+    uint16_t w, h;
 
-            Item &item = _items[idx];
-            int y = 21 + i * 11;
+    // Title
+    d.getTextBounds(" SETTINGS ", 0, 0, &x1, &y1, &w, &h);
+    d.setCursor((128 - w) / 2, 2);
+    d.print(" SETTINGS ");
 
-            if (idx == _cursor) {
-                u.drawStr(2, y, ">");
-            }
+    for (uint8_t i = 0; i < VISIBLE; i++) {
+        int idx = _scroll + i;
+        if (idx >= _count) break;
 
-            char buf[22];
-            const char *val = item.getValue ? item.getValue() : "";
-            snprintf(buf, sizeof(buf), "%-13s%7s", item.label, val);
+        Item &item = _items[idx];
+        int y = 14 + i * 10;
 
-            int x = 12;
-            if (u.getStrWidth(buf) > 128 - x) {
-                int maxW = 128 - x - 1;
-                int labelW = u.getStrWidth(item.label);
-                if (labelW > maxW / 2) labelW = maxW / 2;
-                int valW = u.getStrWidth(val);
-                if (valW > maxW - labelW - 2) valW = maxW - labelW - 2;
-                snprintf(buf, sizeof(buf), "%.*s %s", labelW / 6, item.label, val);
-            }
-            u.drawStr(x, y, buf);
+        if (idx == _cursor) {
+            d.setCursor(2, y);
+            d.print(">");
         }
 
-        if (_count > VISIBLE) {
-            bool canScrollUp = _scroll > 0;
-            bool canScrollDown = (_scroll + VISIBLE) < _count;
-            if (canScrollUp && canScrollDown) {
-                u.drawStr(120, 63, "^");
-                u.drawStr(120, 55, "v");
-            } else if (canScrollUp) {
-                u.drawStr(124, 9, "^");
-            } else if (canScrollDown) {
-                u.drawStr(124, 9, "v");
-            }
+        char buf[22];
+        const char *val = item.getValue ? item.getValue() : "";
+        snprintf(buf, sizeof(buf), "%-13s%7s", item.label, val);
+
+        int x = 12;
+        d.getTextBounds(buf, 0, 0, &x1, &y1, &w, &h);
+        if (w > 128 - x) {
+            int maxW = 128 - x - 1;
+            int labelLen = strlen(item.label);
+            int maxChars = (maxW - 3) / 6;
+            if (maxChars < 1) maxChars = 1;
+            int labelChars = labelLen;
+            if (labelChars > maxChars) labelChars = maxChars;
+            snprintf(buf, sizeof(buf), "%.*s %s", labelChars, item.label, val);
         }
-    } while (u.nextPage());
+        d.setCursor(x, y);
+        d.print(buf);
+    }
+
+    if (_count > VISIBLE) {
+        bool canScrollUp = _scroll > 0;
+        bool canScrollDown = (_scroll + VISIBLE) < _count;
+        if (canScrollUp && canScrollDown) {
+            d.setCursor(120, 55);
+            d.print("^");
+            d.setCursor(120, 63);
+            d.print("v");
+        } else if (canScrollUp) {
+            d.setCursor(124, 2);
+            d.print("^");
+        } else if (canScrollDown) {
+            d.setCursor(124, 2);
+            d.print("v");
+        }
+    }
+
+    d.display();
 }
 
 bool OledMenu::tick() {

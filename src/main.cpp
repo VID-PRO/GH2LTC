@@ -41,6 +41,35 @@ static LtcDecoder ltcDecoder(LTC_IN_PIN);
 #endif
 static char tcStr[13] = "00:00:00:00";
 
+// Master role sub-modes — stored in NVS ("ltc" namespace, key "m_role")
+#define MASTER_ROLE_IN   0   // decode LTC input only, no output
+#define MASTER_ROLE_OUT  1   // generate LTC output only, free-running
+#define MASTER_ROLE_BOTH 2   // decode input AND generate output
+
+static int getMasterRole() {
+    Preferences p;
+    p.begin("ltc", true);
+    int role = p.getUChar("m_role", MASTER_ROLE_IN);
+    p.end();
+    return role;
+}
+
+static void setMasterRole(int role) {
+    Preferences p;
+    p.begin("ltc", false);
+    p.putUChar("m_role", (uint8_t)role);
+    p.end();
+}
+
+static const char* masterRoleStr(int role) {
+    switch (role) {
+        case MASTER_ROLE_IN:   return "IN";
+        case MASTER_ROLE_OUT:  return "OUT";
+        case MASTER_ROLE_BOTH: return "BOTH";
+        default:               return "?";
+    }
+}
+
 static void fmtTcStr(uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff) {
     snprintf(tcStr, sizeof(tcStr), "%02u:%02u:%02u:%02u", hh, mm, ss, ff);
 }
@@ -186,86 +215,9 @@ void runReverseEngineerDump() {
     uint8_t hpd = tc.readReg8(HPD_CTL);
     uint8_t ddc = tc.readReg8(DDC_CTL);
 
-    // If TMDS stayed 0 for ~120s, re-write EDID + retry HPD
-    static unsigned long lastHpdRetry = 0;
-    unsigned long now = millis();
-    if (!(st & 0x02) && (now - lastHpdRetry > 120000)) {
-        lastHpdRetry = now;
-        Serial.println(F("TMDS still 0 — retrying (full re-apply + CLKM_CTL)..."));
-        tc.writeReg8(HPD_CTL, 0x00);
-        tc.writeReg8(EDID_MODE, 0x00);
-        delay(50);
-        tc.pulseReg16(SYSCTL, MASK_HDMIRST);
-        delay(200);
-        // Re-apply ref clock (42 MHz) + PHY config + EDID
-        tc.writeReg8(PHY_CTL0, 0x23);
-        tc.writeReg8(CLKM_CTL, 0x01);
-        tc.writeReg8(SYS_FREQ0, (42000000 / 10000) & 0xFF);
-        tc.writeReg8(SYS_FREQ1, ((42000000 / 10000) >> 8) & 0xFF);
-        tc.writeReg8(NCO_F0_MOD, 0x00);
-        tc.writeReg8(DDC_CTL, 0x02);
-        tc.writeReg8(PHY_EN, 0x00);
-        tc.writeReg8(PHY_CTL1, 0x80);
-        tc.writeReg8(SYS_CLK, 0x00);
-        tc.writeReg8(PHY_BIAS, 0x50);
-        tc.writeReg8(PHY_CSQ, 0x02);
-        tc.writeReg8(PHY_RST, 0x01);
-        tc.writeReg8(AVM_CTL, 45);
-        tc.writeReg8(HDMI_DET, 0x10);
-        tc.writeReg8(HV_RST, 0x00);
-        tc.writeReg8(PHY_EN, 0x01);
-        tc.writeReg8(ANA_CTL, 0x33);
-        tc.writeReg8(VI_MODE, 0x00);
-        tc.writeReg8(VOUT_SET2, 0x01);
-        tc.writeReg8(VOUT_SET3, 0x08);
-        // Re-write EDID + reshow
-        tc.writeEdidByteByByte(EDID_1080P25, sizeof(EDID_1080P25));
-        delay(10);
-        tc.writeReg8(EDID_LEN1, 0x00);
-        tc.writeReg8(EDID_LEN2, 0x00);
-        tc.writeReg8(EDID_SEG_NUM, 0x00);
-        tc.writeReg8(EDID_LEN1, sizeof(EDID_1080P25) & 0xFF);
-        tc.writeReg8(EDID_LEN2, (sizeof(EDID_1080P25) >> 8) & 0xFF);
-        tc.writeReg8(EDID_MODE, MASK_EDID_MODE_E_DDC);
-        tc.writeReg8(INIT_END, 0x01);
-        delay(5);
-        delay(200);
-        tc.writeReg8(HPD_CTL, 0x01);
-        tc.writeReg16(SYS_INT, 0xFFFF);  // clear pending events
-        // Poll SYS_STATUS + DDC address rapidly for 2 seconds
-        for (int i = 0; i < 40; i++) {
-            delay(50);
-            uint8_t s = tc.readReg8(SYS_STATUS);
-            uint16_t si = tc.readReg16(SYS_INT);
-            uint8_t seg = tc.readReg8(EDID_SEG_NUM);
-            if (si) {
-                Serial.print(F("SYS_INT=0x"));
-                Serial.print(si, HEX);
-                Serial.print(F(" at +"));
-                Serial.print((i + 1) * 50);
-                Serial.println(F("ms"));
-                tc.writeReg16(SYS_INT, 0xFFFF);
-            }
-            if (s & 0x02) {
-                Serial.print(F("TMDS DETECTED at +"));
-                Serial.print((i + 1) * 50);
-                Serial.println(F("ms after HPD"));
-                break;
-            }
-            if (seg != 0xA0 && seg != 0) {
-                Serial.print(F("DDC addr 0x"));
-                Serial.print(seg, HEX);
-                Serial.print(F(" at +"));
-                Serial.print((i + 1) * 50);
-                Serial.println(F("ms"));
-            }
-        }
-        st = tc.readReg8(SYS_STATUS);
-        Serial.print(F("After retry SYS_STATUS: 0x"));
-        Serial.println(st, HEX);
-    }
+    static bool first = true;
 
-    Serial.println(F("--- status / packet dump ---"));
+    // One-line status every 500ms
     Serial.print(F("SYS_STATUS: 0x")); Serial.print(st, HEX);
     Serial.print(F(" DDC5V=")); Serial.print((st >> 0) & 1);
     Serial.print(F(" TMDS="));  Serial.print((st >> 1) & 1);
@@ -274,12 +226,39 @@ void runReverseEngineerDump() {
     Serial.print(F(" HDMI="));  Serial.print((st >> 4) & 1);
     Serial.print(F(" HDCP="));  Serial.print((st >> 5) & 1);
     Serial.print(F(" MUTE="));  Serial.print((st >> 6) & 1);
-    Serial.print(F(" SYNC="));  Serial.println((st >> 7) & 1);
+    Serial.print(F(" SYNC="));  Serial.print((st >> 7) & 1);
+    Serial.print(F(" VI1=0x")); Serial.print(tc.readReg8(VI_STATUS1), HEX);
+    Serial.print(F(" VI3=0x")); Serial.print(tc.readReg8(VI_STATUS3), HEX);
+    Serial.println();
+
+    // Read VS InfoFrame every poll; print when non-zero or changed
+    static uint8_t lastVsif[PK_VS_LEN] = {0};
+    uint8_t vsif[PK_VS_LEN];
+    tc.readBlock(PK_VS_0HEAD, vsif, PK_VS_LEN);
+    bool vsifChanged = memcmp(vsif, lastVsif, PK_VS_LEN) != 0;
+    bool vsifNonZero = false;
+    for (size_t i = 0; i < PK_VS_LEN; i++) { if (vsif[i]) { vsifNonZero = true; break; } }
+    if (vsifChanged || vsifNonZero) {
+        memcpy(lastVsif, vsif, PK_VS_LEN);
+        Serial.print(F("VSIF: "));
+        for (size_t i = 0; i < PK_VS_LEN; i++) {
+            if (vsif[i] < 0x10) Serial.print('0');
+            Serial.print(vsif[i], HEX); Serial.print(' ');
+        }
+        if (vsif[0] == 0x81) Serial.print(F(" (VSIF header OK)"));
+        Serial.println();
+    }
+
+    if (!first) return;
+    first = false;
+
+    // Full dump once on first call
+    Serial.println(F("--- full diagnostics ---"));
     // 0x85xx register write-read-back test
     uint8_t testVal = tc.readReg8(SYS_CLK);
     tc.writeReg8(SYS_CLK, 0xA5);
     uint8_t testRead = tc.readReg8(SYS_CLK);
-    tc.writeReg8(SYS_CLK, testVal);  // restore
+    tc.writeReg8(SYS_CLK, testVal);
     if (testRead != 0xA5) {
         Serial.print(F("WARN: 0x85xx write/read mismatch! SYS_CLK: wrote 0xA5 got 0x"));
         Serial.println(testRead, HEX);
@@ -303,8 +282,12 @@ void runReverseEngineerDump() {
     uint8_t ldet2 = tc.readReg8(LOCKDET_REF2);
     uint8_t phyCtl0 = tc.readReg8(PHY_CTL0);
     uint16_t sysctl = tc.readReg16(SYSCTL);
-    Serial.print(F("HPD_CTL: 0x")); Serial.print(hpd, HEX);
-    Serial.print(F(" DDC_CTL: 0x")); Serial.print(ddc, HEX);
+    uint8_t hpdNew = tc.readReg8(0x85C8);
+    uint8_t ddcNew = tc.readReg8(0x85C7);
+    Serial.print(F("HPD_CTL(0x8544): 0x")); Serial.print(hpd, HEX);
+    Serial.print(F(" (0x85C8): 0x")); Serial.print(hpdNew, HEX);
+    Serial.print(F(" DDC_CTL(0x8543): 0x")); Serial.print(ddc, HEX);
+    Serial.print(F(" (0x85C7): 0x")); Serial.print(ddcNew, HEX);
     Serial.print(F(" PHY_CSQ: 0x")); Serial.print(phyCsq, HEX);
     Serial.print(F(" VI_STAT1: 0x")); Serial.print(vi1, HEX);
     Serial.print(F(" VI_STAT3: 0x")); Serial.print(vi3, HEX);
@@ -321,19 +304,15 @@ void runReverseEngineerDump() {
     Serial.print(F(" EDID_SEG_NUM: 0x")); Serial.print(edidSegNum, HEX);
     Serial.print(F(" EDID_LEN: 0x")); Serial.print(edidLen2, HEX); Serial.print(edidLen1, HEX);
     Serial.println();
-    // Verify EDID_RAM was written — read first 16 bytes (should be EDID header)
     uint8_t edidHdr[16];
     for (int i = 0; i < 16; i++) edidHdr[i] = tc.readReg8(EDID_RAM + i);
     Serial.print(F("EDID_RAM[0..15]: "));
     for (int i = 0; i < 16; i++) { if (edidHdr[i] < 0x10) Serial.print('0'); Serial.print(edidHdr[i], HEX); Serial.print(' '); }
     Serial.println();
-    Serial.print(F("Signal locked: "));
-    Serial.println(tc.hasSignal() ? F("yes") : F("no"));
     Serial.print(F("HDMI mode: "));
     Serial.println(tc.isHdmiMode() ? F("yes (good, packets active)") : F("no (DVI - no packets!)"));
 
     dumpEdid();
-    // Verify CEA block was written — dump first 20 bytes of block 1
     Serial.print(F("CEA_BLK1[0..19]: "));
     for (int i = 0; i < 20; i++) {
         uint8_t b = tc.readReg8(EDID_RAM + 128 + i);
@@ -415,8 +394,10 @@ static void menuToggleDf() {
 }
 static const char* menuGetLtcOut() { return webui.ltcEnabled() ? "On" : "Off"; }
 static const char* menuGetOled()   { return webui.oledEnabled() ? "On" : "Off"; }
+static const char* menuGetWifi()   { return webui.wifiEnabled() ? "On" : "Off"; }
 static void menuToggleLtcOut() { webui.setLtcEnabled(!webui.ltcEnabled()); }
 static void menuToggleOled()   { webui.setOledEnabled(!webui.oledEnabled()); oled.forceRedraw(); }
+static void menuToggleWifi()   { webui.setWifiEnabled(!webui.wifiEnabled()); }
 static void menuExit()         { menu.hide(); oled.forceRedraw(); }
 
 #if TCWL_LTC
@@ -438,12 +419,22 @@ static const char* menuGetBright() {
 static void menuToggleMatrix() { webui.setMatrixEnabled(!webui.matrixEnabled()); }
 static void menuCycleBright()  { webui.setBrightness((webui.brightness() + 1) % 16); }
 
+static const char* menuGetRole() { return masterRoleStr(getMasterRole()); }
+static void menuCycleRole() {
+    int r = getMasterRole();
+    r = (r + 1) % 3;  // 0→1→2→0
+    setMasterRole(r);
+    ESP.restart();
+}
+
 static void menuBuildItems() {
     menu.clear();
     menu.addItem("FPS",       menuGetFps,    menuCycleFps);
     menu.addItem("DropFr",    menuGetDf,     menuToggleDf);
     menu.addItem("Mode",      menuGetMode,   menuToggleMode);
+    menu.addItem("Role",      menuGetRole,   menuCycleRole);
     menu.addItem("LTC Out",   menuGetLtcOut, menuToggleLtcOut);
+    menu.addItem("WiFi",      menuGetWifi,   menuToggleWifi);
     menu.addItem("OLED",      menuGetOled,   menuToggleOled);
     menu.addItem("Matrix",    menuGetMatrix, menuToggleMatrix);
     menu.addItem("Bright",    menuGetBright, menuCycleBright);
@@ -458,6 +449,7 @@ static void menuBuildItems() {
     menu.addItem("FPS",       menuGetFps,    menuCycleFps);
     menu.addItem("DropFr",    menuGetDf,     menuToggleDf);
     menu.addItem("LTC Out",   menuGetLtcOut, menuToggleLtcOut);
+    menu.addItem("WiFi",      menuGetWifi,   menuToggleWifi);
     menu.addItem("OLED",      menuGetOled,   menuToggleOled);
     menu.addItem("Exit",      nullptr,       menuExit);
     menu.setTimeout(15000);
@@ -525,10 +517,13 @@ static void printConfig() {
 #elif TCWL_HDMI
     Serial.println(F("HDMI"));
 #else
-    if (bleGetMode() == TCWL_MODE_LTC_MASTER)
-        Serial.println(F("LTC (master — LTC input server)"));
-    else
+    if (bleGetMode() == TCWL_MODE_LTC_MASTER) {
+        Serial.print(F("LTC (master — "));
+        Serial.print(masterRoleStr(getMasterRole()));
+        Serial.println(F(")"));
+    } else {
         Serial.println(F("LTC (slave — BLE client)"));
+    }
 #endif
 #ifndef TCWL_CLAP
     Serial.print(F("  LTC_ENABLED       ")); Serial.println(webui.ltcEnabled() ? "1" : "0");
@@ -605,7 +600,7 @@ static void hdmiSetup() {
                   TC_I2C_SDA_PIN, TC_I2C_SCL_PIN, TC_RESET_PIN);
     tcPresent = tc.begin(TC_I2C_SDA_PIN, TC_I2C_SCL_PIN, TC_RESET_PIN);
     if (!tcPresent) {
-        Wire.begin(TC_I2C_SDA_PIN, TC_I2C_SCL_PIN, 100000);
+        Wire.begin(TC_I2C_SDA_PIN, TC_I2C_SCL_PIN, 50000);
         static const uint8_t altAddrs[] = { 0x0F, 0x1F, 0x3D };
         for (int i = 0; i < 3; i++) {
             if (altAddrs[i] == TC_I2C_ADDR) continue;
@@ -902,7 +897,19 @@ static void hdmiLoop() {
 #if TCWL_LTC
 static void ltcSetup() {
 #if OLED_ENABLE || RTC_ENABLE
-    Wire.begin(TC_I2C_SDA_PIN, TC_I2C_SCL_PIN);
+    Wire.begin(TC_I2C_SDA_PIN, TC_I2C_SCL_PIN, 100000);
+    delay(50);
+    // Test: can we write ANYTHING on the I2C bus right after init?
+    {
+        uint32_t freq;
+        esp_err_t r = i2cGetClock(0, &freq);
+        Serial.printf("I2C test: i2cIsInit=%d freq=%lu ret=%d\n", i2cIsInit(0), freq, r);
+        Wire.beginTransmission(0x3C);
+        Wire.write((uint8_t)0x00);
+        Wire.write((uint8_t)0xAE);
+        uint8_t err = Wire.endTransmission();
+        Serial.printf("I2C test write to 0x3C: err=%d\n", err);
+    }
 #endif
 
     ltc.begin();
@@ -920,6 +927,16 @@ static void ltcSetup() {
     Serial.println(webui.ltcEnabled() ? F("started") : F("disabled"));
 #endif
 
+#if OLED_ENABLE
+    Serial.printf("  OLED_ENABLED=%d\n", webui.oledEnabled());
+    if (webui.oledEnabled()) {
+        oled.begin();
+        Serial.println(F("OLED started"));
+    } else {
+        Serial.println(F("OLED disabled"));
+    }
+#endif
+
 #if RTC_ENABLE
     rtcPresent = rtc.begin(RTC_I2C_SDA_PIN, RTC_I2C_SCL_PIN);
     if (rtcPresent) {
@@ -932,16 +949,6 @@ static void ltcSetup() {
         }
     } else {
         Serial.println(F("No RTC detected."));
-    }
-#endif
-
-#if OLED_ENABLE
-    Serial.printf("  OLED_ENABLED=%d\n", webui.oledEnabled());
-    if (webui.oledEnabled()) {
-        oled.begin();
-        Serial.println(F("OLED started"));
-    } else {
-        Serial.println(F("OLED disabled"));
     }
 #endif
 
@@ -960,10 +967,22 @@ static void ltcSetup() {
 #endif
 
     if (bleGetMode() == TCWL_MODE_LTC_MASTER) {
-        ltc.setEnabled(false);
-        ltcDecoder.begin();
-        ltcDecoder.setCallback(onLtcDecoded);
-        Serial.println(F("LTC decoder started — acting as source (BLE server)"));
+        int role = getMasterRole();
+        Serial.printf("LTC master role: %s\n", masterRoleStr(role));
+        if (role == MASTER_ROLE_IN) {
+            ltc.setEnabled(false);
+            ltcDecoder.begin();
+            ltcDecoder.setCallback(onLtcDecoded);
+            Serial.println(F("  IN — decode only"));
+        } else if (role == MASTER_ROLE_OUT) {
+            ltc.setEnabled(true);
+            Serial.println(F("  OUT — generate only"));
+        } else {
+            ltc.setEnabled(true);
+            ltcDecoder.begin();
+            ltcDecoder.setCallback(onLtcDecoded);
+            Serial.println(F("  BOTH — decode + generate"));
+        }
     } else {
         ltc.setEnabled(true);
         bleTimecodeSetCallback(onBleTimecode);
@@ -997,40 +1016,63 @@ static void ltcLoop() {
 #endif
 
     if (bleGetMode() == TCWL_MODE_LTC_MASTER) {
-        ltcDecoder.poll();
-
+        int role = getMasterRole();
         unsigned long now = millis();
+
+        // Poll decoder in IN or BOTH mode
+        bool decoderActive = (role != MASTER_ROLE_OUT);
+        if (decoderActive) {
+            ltcDecoder.poll();
+            if (ltcDecoder.locked()) lastDecodedFrameMs = now;
+        }
+
+        bool signalOk = decoderActive && ltcDecoder.locked() && (now - lastDecodedFrameMs < 2000);
 
         uint16_t frames = ltc.framesCompleted();
         if (frames > 0) {
-            bool signalOk = ltcDecoder.locked() && (now - lastDecodedFrameMs < 2000);
-            if (frames && (frames & 0xF) == 0) {
+            if ((frames & 0xF) == 0) {
                 Serial.printf("[TC] frames=%u tc=%02u:%02u:%02u:%02u:%02u locked=%d\n",
                     frames, ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff(), ltcDecoder.locked());
             }
-            if (!signalOk) {
+
+            if (role == MASTER_ROLE_IN) {
+                // IN: free-run when no signal from decoder
+                if (!signalOk) {
+                    while (frames--) ltc.tick();
+                }
+                strcpy(tcSource, signalOk ? "LTC-IN" : "FREE");
+            } else if (role == MASTER_ROLE_OUT) {
+                // OUT: always free-run
                 while (frames--) ltc.tick();
-                strcpy(tcSource, "FREE");
+                strcpy(tcSource, "GEN");
             } else {
-                strcpy(tcSource, "LTC-IN");
+                // BOTH: free-run when no signal
+                if (!signalOk) {
+                    while (frames--) ltc.tick();
+                }
+                strcpy(tcSource, signalOk ? "LTC-IN" : "FREE");
             }
 
-                    bleTimecodeUpdate(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
-        } else {
-            static unsigned long lastNoFrameLog = 0;
-            if (now - lastNoFrameLog > 5000) {
-                lastNoFrameLog = now;
-                Serial.printf("[TC] no frames for 5s tc=%02u:%02u:%02u:%02u:%02u\n",
-                    ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
+            bleTimecodeUpdate(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
+        } else if (role == MASTER_ROLE_IN) {
+            // IN mode, encoder off — broadcast BLE periodically
+            static unsigned long lastBleBcast = 0;
+            if (now - lastBleBcast >= 1000) {
+                lastBleBcast = now;
+                bleTimecodeUpdate(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
             }
         }
 
-        if (ltcDecoder.locked()) lastDecodedFrameMs = now;
+        if (!decoderActive) {
+            strcpy(tcSource, "GEN");
+        }
 
 #if OLED_ENABLE
         if (webui.oledEnabled()) {
             fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
-            oled.update(tcStr, ltc.fps(), ltcDecoder.locked(), gDeviceName, webui.autoFps(), "IN", 0, readBatteryPct(), ltcDecoder.locked() ? 'L' : 'F');
+            oled.update(tcStr, ltc.fps(), decoderActive ? ltcDecoder.locked() : false,
+                        gDeviceName, webui.autoFps(), masterRoleStr(role), 0,
+                        readBatteryPct(), decoderActive && ltcDecoder.locked() ? 'L' : 'F');
         }
 #if defined(TCWL_LTC) && BTN_UP_PIN >= 0
         if (menu.active() && webui.oledEnabled()) {
@@ -1048,7 +1090,7 @@ static void ltcLoop() {
 
 #if WEBUI_ENABLE
         webui.update(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff(),
-                     ltc.fps(), ltc.dropFrame(), ltcDecoder.locked(), tcSource);
+                     ltc.fps(), ltc.dropFrame(), decoderActive ? ltcDecoder.locked() : false, tcSource);
 #endif
     } else {
         bleTimecodePoll();
@@ -1109,10 +1151,36 @@ static void ltcLoop() {
 // ===========================================================================
 void setup() {
     Serial.begin(115200);
+    for (int i = 0; i < 200 && !Serial; i++) delay(10);
+
     pinMode(LTC_OUT_PIN, OUTPUT);
     delay(2000);
     printResetReason();
     initBatteryAdc();
+
+    // Set I2C pins before any library call initialises the bus.
+    Wire.setPins(TC_I2C_SDA_PIN, TC_I2C_SCL_PIN);
+
+    // Init I2C early and test it.
+    Wire.begin(TC_I2C_SDA_PIN, TC_I2C_SCL_PIN, 100000);
+    {
+        Wire.beginTransmission(0x3C);
+        uint8_t probeErr = Wire.endTransmission();  // size=0 → i2c_master_probe
+        Wire.beginTransmission(0x3C);
+        Wire.write((uint8_t)0x00);
+        Wire.write((uint8_t)0xAE);
+        uint8_t writeErr = Wire.endTransmission();
+        Serial.printf("I2C test: probe=0x%02X write=0x%02X\n", probeErr, writeErr);
+    }
+#if OLED_ENABLE
+    oled.begin();
+    Serial.println(F("OLED started (early)"));
+#endif
+
+    // Kick H2 coprocessor firmware load early so the long init sequence below
+    // (~5 s for TC358743) doubles as a grace period for it to boot.
+    WiFi.mode(WIFI_OFF);
+    delay(100);
 
     Serial.print(F("TC-WL starting in "));
 #if TCWL_CLAP
@@ -1185,6 +1253,8 @@ void setup() {
 #else
     strncpy(gDeviceName, apSsid, sizeof(gDeviceName) - 1);
     gDeviceName[sizeof(gDeviceName) - 1] = '\0';
+    char *dash = strrchr(gDeviceName, '-');
+    if (dash) *dash = '\0';
 #endif
 #endif
     // Register persistent callbacks BEFORE begin() so NVS state applies at once
@@ -1195,6 +1265,9 @@ void setup() {
 #endif
     webui.onSetLtcEnabled([](bool en) {
         ltc.setEnabled(en);
+    });
+    webui.onSetWifiEnabled([](bool en) {
+        (void)en;
     });
 
     Serial.print(F("Starting WiFi AP... "));

@@ -16,16 +16,25 @@ void WebUI::begin(const char *apSsid, const char *apPassword,
     strncpy(_apSsid, apSsid, sizeof(_apSsid) - 1);
     strncpy(_apPassword, apPassword ? apPassword : "", sizeof(_apPassword) - 1);
 
-    WiFi.mode(WIFI_AP);
-    WiFi.softAP(apSsid, apPassword);
-    _apIp = WiFi.softAPIP();
-    Serial.print(F("WebUI AP:      "));
-    Serial.print(apSsid);
-    if (_apIp == IPAddress(0,0,0,0)) {
-        Serial.println(F("  IP 0.0.0.0 — AP FAILED!"));
+    _prefs.begin("webui", true);
+    _wifiEnabled = _prefs.getBool("wifi_en", true);
+    _prefs.end();
+
+    if (_wifiEnabled) {
+        WiFi.mode(WIFI_AP);
+        WiFi.softAP(apSsid, apPassword);
+        _apIp = WiFi.softAPIP();
+        Serial.print(F("WebUI AP:      "));
+        Serial.print(apSsid);
+        if (_apIp == IPAddress(0,0,0,0)) {
+            Serial.println(F("  IP 0.0.0.0 — AP FAILED!"));
+        } else {
+            Serial.print(F("  IP "));
+            Serial.println(_apIp);
+        }
     } else {
-        Serial.print(F("  IP "));
-        Serial.println(_apIp);
+        _apIp = IPAddress(0,0,0,0);
+        Serial.println(F("WebUI AP:      disabled (NVS)"));
     }
 
     // --- STA: try saved credentials, then fall back to compile-time defaults ---
@@ -63,12 +72,14 @@ void WebUI::begin(const char *apSsid, const char *apPassword,
 
     // Load brightness and matrix state from NVS (read/write to auto-create namespace)
     _prefs.begin("webui", false);
+    _wifiEnabled = _prefs.getBool("wifi_en", true);
     _brightness = _prefs.getUChar("brightness", 4);
     _matrixEnabled = _prefs.getBool("matrix_en", MATRIX_ENABLED_DEFAULT);
     _oledEnabled = _prefs.getBool("oled_en", true);
     _ltcEnabled = _prefs.getBool("ltc_en", true);
     _prefs.end();
     if (_brightnessCb) _brightnessCb(_brightness);
+    if (_wifiCb) _wifiCb(_wifiEnabled);
     if (_matrixCb) _matrixCb(_matrixEnabled);
     if (_oledCb) _oledCb(_oledEnabled);
     if (_ltcCb) _ltcCb(_ltcEnabled);
@@ -94,6 +105,8 @@ void WebUI::update(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff,
 // -----------------------------------------------------------------------
 void WebUI::handleClient() {
     _server.handleClient();
+
+    if (!_wifiEnabled) return;
 
     wl_status_t staStatus = WiFi.status();
     bool staConnected = (staStatus == WL_CONNECTED);
@@ -566,6 +579,22 @@ void WebUI::setMatrixEnabled(bool en) {
     _prefs.putBool("matrix_en", en);
     _prefs.end();
     if (_matrixCb) _matrixCb(en);
+}
+
+void WebUI::setWifiEnabled(bool en) {
+    _wifiEnabled = en;
+    _prefs.begin("webui", false);
+    _prefs.putBool("wifi_en", en);
+    _prefs.end();
+    if (en) {
+        WiFi.mode(WIFI_AP);
+        WiFi.softAP(_apSsid, _apPassword[0] ? _apPassword : nullptr);
+    } else {
+        WiFi.softAPdisconnect(true);
+        WiFi.disconnect(true);
+        WiFi.mode(WIFI_OFF);
+    }
+    if (_wifiCb) _wifiCb(en);
 }
 
 void WebUI::setBrightness(uint8_t val) {

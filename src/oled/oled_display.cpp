@@ -1,28 +1,30 @@
 #include "oled_display.h"
 
 #if OLED_ENABLE
+#include <Fonts/FreeMono9pt7b.h>
+
 OledDisplay::OledDisplay()
-    : _u8g2(U8G2_R0, U8X8_PIN_NONE, OLED_I2C_SCL_PIN, OLED_I2C_SDA_PIN), _present(false), _lastFps(0) {
+    : _display(128, 64, &Wire, -1), _present(false), _lastFps(0) {
     _lastTc[0] = '\0';
 }
 
 bool OledDisplay::begin() {
-    Wire.begin(OLED_I2C_SDA_PIN, OLED_I2C_SCL_PIN, 100000);
-    Wire.beginTransmission(OLED_I2C_ADDR);
-    if (Wire.endTransmission() != 0) {
-        Serial.print(F("OLED not found at 0x"));
-        Serial.println(OLED_I2C_ADDR, HEX);
-        _present = false;
+    // Wire is already initialized at pins 6/7 from setup().
+    // Don't end/reinit — that can leave the NG I2C peripheral in a bad state.
+    if (!_display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
         return false;
     }
-    Serial.println(F("OLED detected"));
 
-    _u8g2.begin();
-    _u8g2.clearBuffer();
-    _u8g2.setFont(u8g2_font_6x10_tf);
+    _display.clearDisplay();
+    _display.setTextColor(SSD1306_WHITE);
+    _display.setTextSize(1);
 
-    int w = _u8g2.getStrWidth("HDMI2LTC");
-    _u8g2.drawStr((128 - w) / 2, 9, "HDMI2LTC");
+    int16_t x1, y1;
+    uint16_t w, h;
+
+    _display.getTextBounds("HDMI2LTC", 0, 0, &x1, &y1, &w, &h);
+    _display.setCursor((128 - w) / 2, 0);
+    _display.print("HDMI2LTC");
 
     const char *role =
 #if TCWL_HDMI
@@ -35,18 +37,19 @@ bool OledDisplay::begin() {
         ;
     char bottom[24];
     snprintf(bottom, sizeof(bottom), "%s  --  --", role);
-    w = _u8g2.getStrWidth(bottom);
-    _u8g2.drawStr((128 - w) / 2, 63, bottom);
+    _display.getTextBounds(bottom, 0, 0, &x1, &y1, &w, &h);
+    _display.setCursor((128 - w) / 2, 54);
+    _display.print(bottom);
 
-    _u8g2.sendBuffer();
+    _display.display();
     _present = true;
     return true;
 }
 
-static void drawWifiIcon(U8G2 &u, int x, int y) {
-    u.drawBox(x + 1, y, 6, 2);        // outermost arc (top)
-    u.drawBox(x + 2, y + 3, 4, 2);    // middle arc
-    u.drawBox(x + 3, y + 6, 2, 2);    // innermost arc (bottom)
+static void drawWifiIcon(Adafruit_SSD1306 &d, int x, int y) {
+    d.fillRect(x + 1, y,     6, 2, SSD1306_WHITE);
+    d.fillRect(x + 2, y + 3, 4, 2, SSD1306_WHITE);
+    d.fillRect(x + 3, y + 6, 2, 2, SSD1306_WHITE);
 }
 
 void OledDisplay::update(const char *timecode, uint8_t fps, bool locked,
@@ -61,88 +64,116 @@ void OledDisplay::update(const char *timecode, uint8_t fps, bool locked,
     _lastTc[sizeof(_lastTc) - 1] = '\0';
     _lastFps = fps;
 
-    _u8g2.firstPage();
-    do {
-        // ── Top line: WiFi icon + device name + battery + runtime ──
-        drawWifiIcon(_u8g2, 0, 0);
-        _u8g2.setFont(u8g2_font_6x10_tf);
+    _display.clearDisplay();
+    _display.setTextColor(SSD1306_WHITE);
+    _display.setTextSize(1);
 
-        int bx = 95;    // battery x (moved left to make room for runtime text on right)
+    // ── Top line: WiFi icon + device name + battery + runtime ──
+    int16_t x1, y1;
+    uint16_t w, h;
 
-        char runtime[10] = "";
-        int rw = 0;
-        if (batteryPct <= 100) {
-            unsigned remMin = (unsigned)batteryPct * BAT_FULL_RUNTIME_MIN / 100;
-            unsigned hrs = remMin / 60;
-            if (hrs >= 1)
-                snprintf(runtime, sizeof(runtime), "%uh", hrs);
-            else
-                snprintf(runtime, sizeof(runtime), "%um", remMin);
-        } else {
-            strcpy(runtime, "--");
-        }
-        rw = _u8g2.getStrWidth(runtime);
-        int rx = 128 - rw;
+    drawWifiIcon(_display, 0, 0);
 
-        // battery icon
-        _u8g2.drawFrame(bx, 2, 12, 7);
-        _u8g2.drawBox(bx + 12, 4, 2, 3);
-        if (batteryPct <= 100) {
-            uint8_t fill = (batteryPct * 10) / 100;
-            if (fill > 10) fill = 10;
-            if (fill > 0) _u8g2.drawBox(bx + 1, 3, fill, 5);
-        }
+    int bx = 95;
 
-        // runtime text
-        _u8g2.setFont(u8g2_font_6x10_tf);
-        _u8g2.drawStr(rx, 10, runtime);
+    char runtime[10] = "";
+    int rw = 0;
+    if (batteryPct <= 100) {
+        unsigned remMin = (unsigned)batteryPct * BAT_FULL_RUNTIME_MIN / 100;
+        unsigned hrs = remMin / 60;
+        if (hrs >= 1)
+            snprintf(runtime, sizeof(runtime), "%uh", hrs);
+        else
+            snprintf(runtime, sizeof(runtime), "%um", remMin);
+    } else {
+        strcpy(runtime, "--");
+    }
+    _display.getTextBounds(runtime, 0, 0, &x1, &y1, &w, &h);
+    rw = w;
+    int rx = 128 - rw;
 
-        const char *name = deviceName ? deviceName : "";
-        _u8g2.setFont(u8g2_font_8x13_tf);
-        int nw = _u8g2.getStrWidth(name);
-        int nx = 8 + (bx - 8 - nw) / 2;   // centered between wifi icon and battery
-        if (nx < 8) nx = 8;
-        _u8g2.drawStr(nx, 11, name);
+    // battery icon
+    _display.drawRect(bx, 2, 12, 7, SSD1306_WHITE);
+    _display.fillRect(bx + 12, 4, 2, 3, SSD1306_WHITE);
+    if (batteryPct <= 100) {
+        uint8_t fill = (batteryPct * 10) / 100;
+        if (fill > 10) fill = 10;
+        if (fill > 0) _display.fillRect(bx + 1, 3, fill, 5, SSD1306_WHITE);
+    }
 
-        // ── Timecode ──────────────────────────────────────────
-        _u8g2.setFont(u8g2_font_logisoso18_tf);
-        const int tcX = (128 - _u8g2.getStrWidth("88:88:88:88")) / 2;
-        _u8g2.drawStr(tcX, 42, timecode);
+    // runtime text (right-aligned)
+    _display.setCursor(rx, 1);
+    _display.print(runtime);
 
-        // ── Bottom line: 4 bordered boxes ────────────────────
-        _u8g2.setFont(u8g2_font_6x10_tf);
-        const int by = 50, bh = 12;
+    // device name: centered between WiFi icon and battery, truncated to fit
+    const char *name = deviceName ? deviceName : "";
+    _display.getTextBounds(name, 0, 0, &x1, &y1, &w, &h);
+    int avail = bx - 8;  // pixels available (WiFi end → battery start)
+    if (w > avail) {
+        // truncate — 6 px/char
+        size_t maxChars = (size_t)avail / 6;
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%.*s", (int)maxChars, name);
+        _display.getTextBounds(buf, 0, 0, &x1, &y1, &w, &h);
+        _display.setCursor(8 + (avail - w) / 2, 1);
+        _display.print(buf);
+    } else {
+        _display.setCursor(8 + (avail - w) / 2, 1);
+        _display.print(name);
+    }
 
-        // Box 1: master indicator ('H'/'L'), lock icon (synced), or BLE icon (not synced)
-        _u8g2.drawFrame(0, by, 14, bh);
-        if (masterIndicator) {
-            char mStr[2] = { (char)masterIndicator, '\0' };
-            int mw = _u8g2.getStrWidth(mStr);
-            _u8g2.drawStr((14 - mw) / 2, 60, mStr);
-        } else if (locked) {
-            // LTC slave synced via BLE — 'b' for Bluetooth
-            _u8g2.drawStr((14 - _u8g2.getStrWidth("B")) / 2, 60, "B");
-        } else {
-            // LTC slave not synced — free-running indicator
-            _u8g2.drawStr((14 - _u8g2.getStrWidth("F")) / 2, 60, "F");
-        }
+    // ── Timecode (centered between top line end and bottom boxes) ──
+    _display.setFont(&FreeMono9pt7b);
+    _display.getTextBounds(timecode, 0, 0, &x1, &y1, &w, &h);
+    // FreeMono9pt7b: all glyphs xAdvance=11, so 11 chars = 121px fixed span
+    // Fixed x position prevents jumping when character shapes differ
+    int tcY = 28 - y1 - h / 2;  // 28 = midpoint of y=10 to y=46
+    _display.setCursor(3, tcY);
+    _display.print(timecode);
 
-        // Box 2: A/M
-        _u8g2.drawFrame(16, by, 16, bh);
-        char modeCh[2] = { autoFps ? 'A' : 'M', '\0' };
-        _u8g2.drawStr(16 + (16 - _u8g2.getStrWidth(modeCh)) / 2, 60, modeCh);
+    // ── Bottom line: 4 bordered boxes ──
+    _display.setFont(NULL);
+    _display.setTextSize(1);
+    const int by = 46, bh = 12;
 
-        // Box 3: fps
-        _u8g2.drawFrame(34, by, 42, bh);
-        char fpsStr[8];
-        snprintf(fpsStr, sizeof(fpsStr), "%dfps", fps);
-        _u8g2.drawStr(34 + (42 - _u8g2.getStrWidth(fpsStr)) / 2, 60, fpsStr);
+    // Box 1: master indicator (H/L), lock icon (B), or free (F)
+    _display.drawRect(0, by, 14, bh, SSD1306_WHITE);
+    char mCh;
+    if (masterIndicator) {
+        mCh = (char)masterIndicator;
+    } else if (locked) {
+        mCh = 'B';
+    } else {
+        mCh = 'F';
+    }
+    char mStr[2] = { mCh, '\0' };
+    _display.getTextBounds(mStr, 0, 0, &x1, &y1, &w, &h);
+    _display.setCursor((14 - w) / 2, by + 2);
+    _display.print(mStr);
 
-        // Box 4: LTC mode
-        _u8g2.drawFrame(78, by, 50, bh);
-        char ltcFull[12];
-        snprintf(ltcFull, sizeof(ltcFull), "LTC %s", ltcMode);
-        _u8g2.drawStr(78 + (50 - _u8g2.getStrWidth(ltcFull)) / 2, 60, ltcFull);
-    } while (_u8g2.nextPage());
+    // Box 2: A/M
+    _display.drawRect(16, by, 16, bh, SSD1306_WHITE);
+    char modeCh[2] = { autoFps ? 'A' : 'M', '\0' };
+    _display.getTextBounds(modeCh, 0, 0, &x1, &y1, &w, &h);
+    _display.setCursor(16 + (16 - w) / 2, by + 2);
+    _display.print(modeCh);
+
+    // Box 3: fps
+    _display.drawRect(34, by, 42, bh, SSD1306_WHITE);
+    char fpsStr[8];
+    snprintf(fpsStr, sizeof(fpsStr), "%dfps", fps);
+    _display.getTextBounds(fpsStr, 0, 0, &x1, &y1, &w, &h);
+    _display.setCursor(34 + (42 - w) / 2, by + 2);
+    _display.print(fpsStr);
+
+    // Box 4: LTC mode
+    _display.drawRect(78, by, 50, bh, SSD1306_WHITE);
+    char ltcFull[12];
+    snprintf(ltcFull, sizeof(ltcFull), "LTC %s", ltcMode);
+    _display.getTextBounds(ltcFull, 0, 0, &x1, &y1, &w, &h);
+    _display.setCursor(78 + (50 - w) / 2, by + 2);
+    _display.print(ltcFull);
+
+    _display.display();
 }
 #endif

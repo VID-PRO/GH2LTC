@@ -20,7 +20,7 @@ public:
 
     void configureCsiTx();
     void enableCsiStream(bool enable);
-    void reapplyPhy();
+    void configurePhy(uint8_t phyCtl0);
 
     bool writeEdid(const uint8_t *data, size_t len);
     bool writeEdidByteByByte(const uint8_t *data, size_t len);
@@ -31,6 +31,7 @@ public:
     void     writeReg16(uint16_t reg, uint16_t val);
     void     writeReg32(uint16_t reg, uint32_t val);
     void     readBlock(uint16_t reg, uint8_t *buf, size_t len);
+    void     modifyReg8(uint16_t reg, uint8_t clearMask, uint8_t setMask);
 
     // Pulse a mask bit in a 16-bit register: assert then deassert
     void pulseReg16(uint16_t reg, uint16_t mask);

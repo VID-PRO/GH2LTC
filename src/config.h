@@ -10,7 +10,7 @@
 #define TC_I2C_ADDR      0x0F   // default 7-bit address on most TC358743 breakout boards
 
 // TC358743 hardware reset pin (-1 = skip, rely on internal power-on reset)
-#define TC_RESET_PIN     -1
+#define TC_RESET_PIN     4
 
 // LTC audio output pin (goes to your RC filter -> 3.5mm TRS -> LTC input)
 #define LTC_OUT_PIN      6
