@@ -191,14 +191,64 @@ The 128×64 SSD1306 display is organized in three fixed zones (HDMI, LTC, and CL
 └──────────────────────────────────────────────────────┘
 ```
 
-* **Box 1 (14 px):** Shows `H` (HDMI master), `L` (LTC master mode), `F` (CLAP/LTC slave, not synced), lock icon (LTC slave, BLE synced), or `B` (CLAP, BLE synced)
-* **Box 2 (16 px):** `A` (auto FPS) or `M` (manual FPS)
+* **Box 1 (14 px):** `L` (LTC master, synced), `F` (free-running, no RTC), `R` (free-running from RTC), or `B` (BLE synced slave)
+* **Box 2 (12 px):** `A` (auto FPS) or `M` (manual FPS)
 * **Box 3 (42 px):** Framerate — `24fps`, `25fps`, `30fps`, `50fps`, `60fps`
 * **Box 4 (50 px):** LTC mode — `LTC OUT` or `LTC IN`
 
-A 4-button menu (UP/DOWN/OK/CANCEL) overlays the main screen when active (HDMI and LTC only — CLAP has no physical buttons). Menu items are build-specific:
-* **LTC:** FPS, Drop Frame, LTC Mode, Matrix, Brightness, OLED, Exit
-* **HDMI:** FPS, Drop Frame, LTC Out, OLED, Exit
+### OLED Menu (HDMI & LTC only)
+
+A 4-button menu (UP/DOWN/OK/CANCEL) overlays the main screen when any button is pressed. The menu title is `SETTINGS`. Inactive for 15 s it auto-closes.
+
+**LTC menu** — each item shows a value on the right; OK cycles/toggles; long‑OK on items marked † restarts:
+
+```
+ SETTINGS
+>FPS         25
+ DropFr      Off
+ Mode     Slave
+ Role        IN
+ LTC Out     On
+ WiFi        On
+ OLED        On
+ Matrix     Off
+ Bright       4
+ Exit
+```
+
+| Item | Values | Action |
+|------|--------|--------|
+| **FPS** | 24, 25, 30, 50, 60 | Cycles FPS; saved to NVS |
+| **DropFr** | On / Off | Toggles drop frame |
+| **Mode** | Master / Slave | Toggles BLE role; †restarts |
+| **Role** | IN / OUT / BOTH | Decode / Generate / Both; †restarts |
+| **LTC Out** | On / Off | Enables/disables LTC output |
+| **WiFi** | On / Off | Toggles WiFi radio |
+| **OLED** | On / Off | Toggles display |
+| **Matrix** | On / Off | Toggles LED matrix display |
+| **Bright** | 0–15 | Cycles MAX7219 brightness |
+| **Exit** | — | Closes menu |
+
+**HDMI menu** (subset — no LTC decoder, no matrix hardware):
+
+```
+ SETTINGS
+>FPS         25
+ DropFr      Off
+ LTC Out     On
+ WiFi        On
+ OLED        On
+ Exit
+```
+
+| Item | Values | Action |
+|------|--------|--------|
+| **FPS** | 24, 25, 30, 50, 60 | Cycles FPS |
+| **DropFr** | On / Off | Toggles drop frame |
+| **LTC Out** | On / Off | Enables/disables LTC output |
+| **WiFi** | On / Off | Toggles WiFi radio |
+| **OLED** | On / Off | Toggles display |
+| **Exit** | — | Closes menu |
 
 ## Battery Monitoring
 

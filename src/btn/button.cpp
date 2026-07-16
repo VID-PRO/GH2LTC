@@ -14,6 +14,8 @@ void Button::begin(bool pullup) {
 }
 
 void Button::read() {
+    _pressed = false;
+    _released = false;
     bool raw = (digitalRead(_pin) == LOW);
     if (raw != _lastRaw) {
         _lastRaw = raw;

@@ -23,8 +23,8 @@
 // free for button use.  GPIO0/1 avoided (strapping function).
 #define BTN_UP_PIN       8
 #define BTN_DOWN_PIN     9
-#define BTN_OK_PIN       2
-#define BTN_CANCEL_PIN   3
+#define BTN_OK_PIN       4
+#define BTN_CANCEL_PIN   5
 
 // TC358743 RESETN has internal pull-up — no GPIO needed
 

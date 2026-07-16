@@ -471,8 +471,12 @@ static uint8_t readBatteryPct() {
     unsigned long now = millis();
     if (now - lastRead > 10000) {
         lastRead = now;
+        analogSetPinAttenuation(BAT_ADC_PIN, ADC_11db);
+        delay(1);
         int raw = analogRead(BAT_ADC_PIN);
-        float vBat = raw * 3.3f / 4095.0f * BAT_DIVIDER;
+        uint32_t mv = analogReadMilliVolts(BAT_ADC_PIN);
+        float vPin = mv > 0 ? mv / 1000.0f : raw * 3.3f / 4095.0f;
+        float vBat = vPin * BAT_DIVIDER;
         float pct = (vBat - 3.3f) / (4.2f - 3.3f) * 100.0f;
         if (pct < 0.0f) pct = 0.0f;
         if (pct > 100.0f) pct = 100.0f;

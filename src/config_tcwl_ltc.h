@@ -8,6 +8,12 @@
 #undef TC_RESET_PIN
 #define TC_RESET_PIN          -1
 
+// Buttons on TC-WL-LTC PCB
+#undef BTN_OK_PIN
+#define BTN_OK_PIN            4
+#undef BTN_CANCEL_PIN
+#define BTN_CANCEL_PIN        5
+
 // RTC optional — probed at boot, skipped if not found
 
 // I2C on GPIO 6 (SDA), 7 (SCL) — XIAO ESP32-C3 default I2C pins (D4/D5)
@@ -27,6 +33,6 @@
 #undef LTC_IN_PIN
 #define LTC_IN_PIN           21
 
-// XIAO ESP32-C3: A0 = GPIO 0 (ADC1_CH0), 200k:200k divider
+// XIAO ESP32-C3: D0 = GPIO 2 (ADC1_CH2), 200k:200k divider
 #undef BAT_ADC_PIN
-#define BAT_ADC_PIN           0
+#define BAT_ADC_PIN           2
