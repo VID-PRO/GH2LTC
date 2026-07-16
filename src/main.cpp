@@ -602,7 +602,7 @@ static void hdmiSetup() {
     // TC358743 probe — initialises Wire for all I2C devices on the shared bus
     Serial.printf("I2C: SDA=%d SCL=%d RST=%d\n",
                   TC_I2C_SDA_PIN, TC_I2C_SCL_PIN, TC_RESET_PIN);
-    tcPresent = tc.begin(TC_I2C_SDA_PIN, TC_I2C_SCL_PIN, TC_RESET_PIN);
+    tcPresent = tc.begin(TC_I2C_SDA_PIN, TC_I2C_SCL_PIN, TC_RESET_PIN, TC_REFCLK_HZ);
     if (!tcPresent) {
         Wire.begin(TC_I2C_SDA_PIN, TC_I2C_SCL_PIN, 50000);
         static const uint8_t altAddrs[] = { 0x0F, 0x1F, 0x3D };
@@ -769,6 +769,55 @@ static void hdmiLoop() {
 #endif
 
     bool locked = tcPresent ? tc.hasSignal() : false;
+
+    // Periodic HPD retry when TMDS stays 0 for >30s
+    if (tcPresent && !locked) {
+        static unsigned long lastHpdRetry = 0;
+        if (now - lastHpdRetry > 30000) {
+            lastHpdRetry = now;
+            uint8_t s = tc.readReg8(SYS_STATUS);
+            uint16_t f = tc.readReg16(SYS_FREQ0);
+            // Read CHIPID both ways to check for I2C transaction differences
+            uint16_t chip16 = tc.readReg16(0x0000);
+            uint8_t chipLo = tc.readReg8(0x0000);
+            uint8_t chipHi = tc.readReg8(0x0001);
+            tc.writeReg8(0x8690, 0x01);  // FREQ_MON_CTL: start measurement
+            delay(5);
+            uint16_t freqMon = tc.readReg16(0x8692);  // FREQ_MON_DATA
+            uint32_t tmdsClk = (uint32_t)freqMon * (tc.refclkHz() / 1000) / 65536;            uint8_t p1 = tc.readReg8(PHY_CTL1);
+            uint8_t p2 = tc.readReg8(PHY_CTL2);
+            Serial.printf("HDMI: TMDS=0 30s — SYS_STATUS=0x%02X SYS_FREQ=%u (%.1fMHz) CHIP_R16=0x%04X CHIP_R8=0x%02X/0x%02X FREQ_MON=0x%04X TMDS_CLK=%ukHz PHY_CTL1=0x%02X PHY_CTL2=0x%02X HDMI_CTL=0x%02X PHY_EN=0x%02X\n",
+                          s, f, f * 10.0f / 1000.0f,
+                          chip16, chipLo, chipHi,
+                          freqMon, tmdsClk, p1, p2,
+                          tc.readReg8(HDMI_CTL), tc.readReg8(PHY_EN));
+            // Try explicit freq_range 25-80MHz for 1080p (clone may not support auto-range)
+            tc.writeReg8(PHY_EN, 0x00);  // disable PHY first
+            delay(5);
+            // CLKM_CTL aliases PLLCTL0 low byte — set refclk, then restore PLL
+            tc.writeReg8(CLKM_CTL, (tc.refclkHz() == 42000000) ? 0x01 : 0x00);
+            tc.writeReg16(PLLCTL0, (tc.refclkHz() == 42000000) ? 0x60A1 : 0x308F);
+            delay(5);
+            tc.writeReg8(PHY_CTL1, 0x81);  // freq_range=01 (25-80MHz), auto_rst1=1
+            delay(5);
+            tc.writeReg8(PHY_CTL1, 0x81);  // freq_range=01 (25-80MHz), auto_rst1=1
+            delay(5);
+            tc.writeReg8(PHY_EN, 0x01);  // re-enable PHY
+            delay(20);
+            tc.writeReg8(HPD_CTL, 0x00);  // HPD low
+            delay(200);                    // longer low period for source to notice
+            tc.writeReg8(HPD_CTL, 0x01);  // HPD high (manual force — not auto/interlock)
+            delay(1000);                   // give source time to start sending
+            tc.writeReg8(EDID_MODE, MASK_EDID_MODE_DDC2B | MASK_EDID_MODE_E_DDC);
+            // Re-measure after the cycle to see if anything changed
+            tc.writeReg8(0x8690, 0x01);  // FREQ_MON_CTL
+            delay(5);
+            freqMon = tc.readReg16(0x8692);
+            tmdsClk = (uint32_t)freqMon * (tc.refclkHz() / 1000) / 65536;            s = tc.readReg8(SYS_STATUS);
+            Serial.printf("HDMI: post-retry — SYS_STATUS=0x%02X FREQ_MON=0x%04X TMDS_CLK=%ukHz\n",
+                          s, freqMon, tmdsClk);
+        }
+    }
 
     // Fast poll: detect new frames via SYS_INT
     if (now - lastFastPoll >= FAST_POLL_MS) {

@@ -38,9 +38,12 @@
 #undef BAT_ADC_PIN
 #define BAT_ADC_PIN           -1
 
+// TC358743 reference clock crystal on this module is 27 MHz (not 42 MHz)
+#define TC_REFCLK_HZ          27000000u
+
 // RTC disabled on P4 — RTC I2C uses GPIO 4 (SDA) + 5 (SCL), but GPIO 4 is
 // also TC_RESET_PIN (CE).  rtc.begin() toggles GPIO 4 as I2C data, which
 // glitches the CE line and resets the TC358743.  No RTC on this board.
 #undef RTC_ENABLE
-#define RTC_ENABLE            0
+#define RTC_ENABLE            1
 

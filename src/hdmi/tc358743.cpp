@@ -33,7 +33,7 @@ void TC358743::modifyReg8(uint16_t reg, uint8_t clearMask, uint8_t setMask) {
     writeReg8(reg, val);
 }
 
-bool TC358743::begin(int sda_pin, int scl_pin, int reset_pin) {
+bool TC358743::begin(int sda_pin, int scl_pin, int reset_pin, uint32_t refclk_hz) {
 
     Serial.printf("TC358743::begin(sda=%d, scl=%d, rst=%d, addr=0x%02X)\n",
                   sda_pin, scl_pin, reset_pin, _addr);
@@ -81,7 +81,12 @@ bool TC358743::begin(int sda_pin, int scl_pin, int reset_pin) {
     uint8_t sfHi = readReg8(SYS_FREQ1);
     uint16_t sysFreq = (uint16_t)sfLo | ((uint16_t)sfHi << 8);
     Serial.printf("SYS_FREQ (power-on): 0x%04X (%u)\n", sysFreq, sysFreq);
-    const uint32_t REFCLK_HZ = (sysFreq >= 4000) ? 42000000u : 27000000u;
+    _refclk_hz = refclk_hz ? refclk_hz :
+        ((sysFreq >= 4000) ? 42000000u : 27000000u);
+    const uint32_t REFCLK_HZ = _refclk_hz;
+    Serial.printf("REFCLK_HZ: %u (%.1f MHz)%s\n", REFCLK_HZ,
+                  REFCLK_HZ / 1000000.0f,
+                  refclk_hz ? " (override)" : "");
 
     // ============================================================
     //  p4kvm-style init sequence (Linux kernel derived)
@@ -93,6 +98,11 @@ bool TC358743::begin(int sda_pin, int scl_pin, int reset_pin) {
     // ---- HPD low (source must not DDC during init) ----
     writeReg8(HPD_CTL, 0x00);
     delay(20);
+
+    // ---- CLKM pad power cycle (kernel init_hdmi: 0x8562 = 0x10/0x00) ----
+    writeReg8(CLKM_CTL, 0x10);    // power down clock management pads
+    delay(10);
+    writeReg8(CLKM_CTL, 0x00);    // power up (PLL_REF_FREQ=0 for 27 MHz)
 
     // ---- SYSCTL: reset blocks, wake up ----
     // Set IRRST + CECRST (put IR and CEC in reset)
@@ -152,15 +162,14 @@ bool TC358743::begin(int sda_pin, int scl_pin, int reset_pin) {
         else                       pll_frs = 3;
         uint16_t pllctl0_new = ((pll_prd - 1) << 12) | (pll_fbd - 1);
         if ((readReg16(PLLCTL0) != pllctl0_new) || ((readReg16(PLLCTL1) & 0x0001) == 0)) {
-            modifyReg16(SYSCTL, 0, MASK_SLEEP);       // sleep
+            // Set dividers first, then enable PLL (kernel order)
             writeReg16(PLLCTL0, pllctl0_new);
             writeReg16(PLLCTL1, (pll_frs << 10) | 0x0003); // FRS | RESETB | PLL_EN
             delay(1);
             modifyReg16(PLLCTL1, MASK_CKEN, MASK_CKEN);    // CK_EN
-            modifyReg16(SYSCTL, MASK_SLEEP, 0);            // wake
         }
     }
-    // Sleep/wake may clear SYSCTL bits — fix them
+    // Re-apply SYSCTL reset bits after possible PLL register aliasing
     modifyReg16(SYSCTL, MASK_IRRST | MASK_CECRST, MASK_IRRST | MASK_CECRST);
     writeReg16(SYSCTL, readReg16(SYSCTL) | (MASK_CTXRST | MASK_HDMIRST));
     writeReg16(SYSCTL, readReg16(SYSCTL) & ~(MASK_CTXRST | MASK_HDMIRST));
@@ -168,18 +177,6 @@ bool TC358743::begin(int sda_pin, int scl_pin, int reset_pin) {
     // ---- DDC + EDID mode (wisape pattern: DDC5V comp + active detect delay) ----
     writeReg8(DDC_CTL, 0x32);                 // [5:4]=0b11 5V comp, [1:0]=0b10 DDC5V detect delay 100ms
     writeReg8(EDID_MODE, MASK_EDID_MODE_DDC2B | MASK_EDID_MODE_E_DDC); // DDC2B + E‑DDC
-
-    // ---- HDMI PHY (p4kvm set_hdmi_phy) ----
-    writeReg8(PHY_EN, 0x00);                  // disable PHY for config
-    writeReg8(PHY_CTL1, 0x80);                // auto_rst1=1600µs, freq_range=auto (0=25-165MHz)
-    writeReg8(PHY_CTL2, 0x00);                // enable all auto‑resets
-    writeReg8(PHY_BIAS, 0x40);
-    writeReg8(PHY_CSQ, 0x0a);
-    writeReg8(AVM_CTL, 45);
-    modifyReg8(HDMI_DET, MASK_HDMI_DET_V, 0); // preserve default MOD/NUM bits
-    writeReg8(HV_RST, 0x00);                  // no H/V auto reset
-    writeReg8(PHY_EN, 0x01);                  // enable PHY
-    // ANA_CTL set later (after HPD pulse, per wisape)
 
     // ---- HDCP: force manual auth (off) ----
     writeReg8(HDCP_MODE, MASK_HDCP_MANUAL_AUTH);
@@ -257,6 +254,11 @@ bool TC358743::begin(int sda_pin, int scl_pin, int reset_pin) {
         }
     }
 
+    // ---- DDC bus reset (kernel does this after EDID write) ----
+    writeReg8(0x8556, 0x01);  // DDC_RESET = 1
+    delay(1);
+    writeReg8(0x8556, 0x00);  // DDC_RESET = 0
+
     // ---- Pulse HPD after EDID (wisape: HDMI spec requires HPD low 100ms when EDID changes) ----
     {
         writeReg8(HPD_CTL, 0x01);   // HPD high (manual)
@@ -326,7 +328,7 @@ bool TC358743::begin(int sda_pin, int scl_pin, int reset_pin) {
         writeReg8(0x8690, 0x01);      // FREQ_MON_CTL: start measurement
         delay(5);
         uint16_t freqMon = readReg16(0x8692);  // FREQ_MON_DATA
-        uint32_t tmdsClkKhz = (uint32_t)freqMon * 42000 / 65536; // refclk=42MHz
+        uint32_t tmdsClkKhz = (uint32_t)freqMon * (_refclk_hz / 1000) / 65536;
         Serial.printf("Pre-HPD: SYS_STATUS=0x%02X (DDC5V=%d TMDS=%d PLL=%d HDMI=%d)\n",
                       st, (st >> 0) & 1, (st >> 1) & 1, (st >> 2) & 1, (st >> 4) & 1);
         Serial.printf("           CLK_STATUS=0x%02X (clk=%d dclk=%d stable=%d)\n",
@@ -361,8 +363,16 @@ bool TC358743::begin(int sda_pin, int scl_pin, int reset_pin) {
     // HPD low clears EDID_MODE — re‑enable DDC for source EDID reads
     writeReg8(EDID_MODE, MASK_EDID_MODE_DDC2B | MASK_EDID_MODE_E_DDC);
 
-    writeReg8(ANA_CTL, 0x31);       // DAC/PLL power on (wisape: after HPD pulse)
-    writeReg8(INIT_END, 0x01);      // HDMI RX init complete (wisape: last register)
+    // ---- HDMI PHY (kernel set_hdmi_phy) — AFTER HPD, matching kernel init_hdmi ----
+    writeReg8(PHY_EN, 0x00);                  // disable before config
+    writeReg8(PHY_CTL1, 0xA1);                // auto_rst1=1, freq_range=01 (25-80MHz)
+    writeReg8(PHY_BIAS, 0x40);
+    writeReg8(PHY_CSQ, 0x0a);
+    writeReg8(AVM_CTL, 45);
+    writeReg8(HDMI_DET, 0xC1);                // TMDS termination + AVD detection
+    writeReg8(ANA_CTL, 0x31);                 // DAC/PLL power on
+    writeReg8(PHY_EN, 0x01);                  // enable PHY
+    writeReg8(INIT_END, 0x01);                // HDMI RX init complete
 
     writeReg32(CSI_START, 0x00000001);
 
@@ -433,7 +443,7 @@ bool TC358743::begin(int sda_pin, int scl_pin, int reset_pin) {
         writeReg8(0x8690, 0x01);
         delay(5);
         uint16_t freqMon = readReg16(0x8692);
-        uint32_t tmdsClkKhz = (uint32_t)freqMon * 42000 / 65536;
+        uint32_t tmdsClkKhz = (uint32_t)freqMon * (_refclk_hz / 1000) / 65536;
         Serial.printf("Post-init: SYS_STATUS=0x%02X (DDC5V=%d TMDS=%d PLL=%d HDMI=%d SYNC=%d)\n",
                       st,
                       (st >> 0) & 1, (st >> 1) & 1, (st >> 2) & 1,

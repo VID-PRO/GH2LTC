@@ -12,7 +12,7 @@ class TC358743 {
 public:
     explicit TC358743(TwoWire &wire = Wire, uint8_t addr = 0x0F);
 
-    bool begin(int sda_pin, int scl_pin, int reset_pin = -1);
+    bool begin(int sda_pin, int scl_pin, int reset_pin = -1, uint32_t refclk_hz = 0);
 
     bool hasSignal();
     bool isHdmiMode();
@@ -38,9 +38,12 @@ public:
     // Read-modify-write: clear then set bits in a 16-bit register
     void modifyReg16(uint16_t reg, uint16_t clearMask, uint16_t setMask);
 
+    uint32_t refclkHz() const { return _refclk_hz; }
+
 private:
     TwoWire &_wire;
     uint8_t _addr;
+    uint32_t _refclk_hz = 0;
 
     void writeRegRaw(uint16_t reg, const uint8_t *data, size_t len);
 };
