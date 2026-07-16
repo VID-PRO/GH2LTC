@@ -135,7 +135,7 @@ void OledDisplay::update(const char *timecode, uint8_t fps, uint8_t lockState,
 
     // Box 2: Lock indicator (L = locked, F = free, R = free from RTC)
     _display.drawRect(14, by, 12, bh, SSD1306_WHITE);
-    char lockCh = lockState == 1 ? 'L' : (lockState == 2 ? 'R' : 'F');
+    char lockCh = lockState == 1 ? 'H' : (lockState == 2 ? 'R' : 'F');
     char lockStr[2] = { lockCh, '\0' };
     _display.getTextBounds(lockStr, 0, 0, &x1, &y1, &w, &h);
     _display.setCursor(14 + (12 - w) / 2, by + 2);

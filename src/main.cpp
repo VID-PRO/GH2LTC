@@ -222,30 +222,30 @@ void runReverseEngineerDump() {
     Serial.print(F(" DDC5V=")); Serial.print((st >> 0) & 1);
     Serial.print(F(" TMDS="));  Serial.print((st >> 1) & 1);
     Serial.print(F(" PLL="));   Serial.print((st >> 2) & 1);
-    Serial.print(F(" SCDT="));  Serial.print((st >> 3) & 1);
-    Serial.print(F(" HDMI="));  Serial.print((st >> 4) & 1);
-    Serial.print(F(" HDCP="));  Serial.print((st >> 5) & 1);
+    Serial.print(F(" HDMI="));  Serial.print((st >> 3) & 1);
     Serial.print(F(" MUTE="));  Serial.print((st >> 6) & 1);
     Serial.print(F(" SYNC="));  Serial.print((st >> 7) & 1);
     Serial.print(F(" VI1=0x")); Serial.print(tc.readReg8(VI_STATUS1), HEX);
     Serial.print(F(" VI3=0x")); Serial.print(tc.readReg8(VI_STATUS3), HEX);
     Serial.println();
 
-    // Read VS InfoFrame every poll; print when non-zero or changed
-    static uint8_t lastVsif[PK_VS_LEN] = {0};
-    uint8_t vsif[PK_VS_LEN];
-    tc.readBlock(PK_VS_0HEAD, vsif, PK_VS_LEN);
-    bool vsifChanged = memcmp(vsif, lastVsif, PK_VS_LEN) != 0;
+    // Read VSIF via ACP (type 0x81) — PK_VS registers are zero on this clone
+    static uint8_t lastVsifAcp[PK_ACP_LEN] = {0};
+    uint8_t vsifAcp[PK_ACP_LEN];
+    tc.selectPacketType(0x81);
+    delay(2);
+    tc.readBlock(PK_ACP_0HEAD, vsifAcp, PK_ACP_LEN);
+    bool vsifChanged = memcmp(vsifAcp, lastVsifAcp, PK_ACP_LEN) != 0;
     bool vsifNonZero = false;
-    for (size_t i = 0; i < PK_VS_LEN; i++) { if (vsif[i]) { vsifNonZero = true; break; } }
+    for (size_t i = 0; i < PK_ACP_LEN; i++) { if (vsifAcp[i]) { vsifNonZero = true; break; } }
     if (vsifChanged || vsifNonZero) {
-        memcpy(lastVsif, vsif, PK_VS_LEN);
-        Serial.print(F("VSIF: "));
-        for (size_t i = 0; i < PK_VS_LEN; i++) {
-            if (vsif[i] < 0x10) Serial.print('0');
-            Serial.print(vsif[i], HEX); Serial.print(' ');
+        memcpy(lastVsifAcp, vsifAcp, PK_ACP_LEN);
+        Serial.print(F("VSIF(ACP): "));
+        for (size_t i = 0; i < PK_ACP_LEN; i++) {
+            if (vsifAcp[i] < 0x10) Serial.print('0');
+            Serial.print(vsifAcp[i], HEX); Serial.print(' ');
         }
-        if (vsif[0] == 0x81) Serial.print(F(" (VSIF header OK)"));
+        if (vsifAcp[0] == 0x81) Serial.print(F(" (VSIF)"));
         Serial.println();
     }
 
@@ -329,16 +329,27 @@ void runReverseEngineerDump() {
     dumpBuffer("ISRC1               ", PK_ISRC1_0HEAD, PK_ISRC1_LEN);
     dumpBuffer("ISRC2               ", PK_ISRC2_0HEAD, PK_ISRC2_LEN);
 
-    static const uint8_t typesToTry[] = {
-        PACKET_TYPE_ACP, PACKET_TYPE_GAMUT_METADATA, PACKET_TYPE_DRM_IF
-    };
-    for (uint8_t t : typesToTry) {
-        tc.selectPacketType(t);
-        delay(5);
-        char label[32];
-        snprintf(label, sizeof(label), "ACP slot (type 0x%02X)", t);
-        dumpBuffer(label, PK_ACP_0HEAD, PK_ACP_LEN);
+    // Scan ALL CEA-861 packet types to find non-zero data (GH5 timecode location)
+    Serial.println(F("--- Scanning all ACP packet types (non-zero only) ---"));
+    for (uint16_t t = 0; t <= 0xFF; t++) {
+        tc.selectPacketType((uint8_t)t);
+        delay(2);
+        uint8_t buf[PK_ACP_LEN];
+        tc.readBlock(PK_ACP_0HEAD, buf, PK_ACP_LEN);
+        bool allZero = true;
+        for (size_t i = 0; i < PK_ACP_LEN; i++) {
+            if (buf[i]) { allZero = false; break; }
+        }
+        if (!allZero) {
+            Serial.printf("Type 0x%02X: ", t);
+            for (size_t i = 0; i < PK_ACP_LEN; i++) {
+                if (buf[i] < 0x10) Serial.print('0');
+                Serial.print(buf[i], HEX); Serial.print(' ');
+            }
+            Serial.println();
+        }
     }
+    Serial.println(F("--- End scan ---"));
 
     Serial.println();
 }
@@ -878,22 +889,8 @@ static void hdmiLoop() {
         }
 
         uint16_t frames = ltc.framesCompleted();
-        bool frameDone = hdmiOk || (frames > 0);
-        if (!hdmiOk && frameDone) {
-#if RTC_ENABLE
-            if (rtcPresent) {
-                if (now - lastRtcReadMs >= 1000) {
-                    lastRtcReadMs = now;
-                    if (rtc.readTime(rtcHH, rtcMM, rtcSS)) {
-                        lastRtcSyncMs = now;
-                    }
-                }
-                unsigned long elapsed = now - lastRtcSyncMs;
-                uint8_t ff = (elapsed * ltc.fps()) / 1000;
-                if (ff >= ltc.fps()) ff = ltc.fps() - 1;
-                ltc.setTime(rtcHH, rtcMM, rtcSS, ff);
-                strcpy(tcSource, "RTC");
-            } else {
+        // Always tick LTC when frames are available (free-run or HDMI)
+        if (frames > 0) {
             while (frames--) {
                 ltc.tick();
 #if MAX7219_ENABLE
@@ -903,14 +900,43 @@ static void hdmiLoop() {
                     mx7219.showTimecode(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
 #endif
             }
-                strcpy(tcSource, "FREE");
-            }
-#else
-            while (frames--) ltc.tick();
-            strcpy(tcSource, "FREE");
-#endif
         }
-        if (hdmiOk) strcpy(tcSource, "HDMI");
+        // Poll GH5 timecode from HDMI VSIF (always, not just on SYS_INT)
+        if (hdmiOk) {
+            Gh5Timecode gh5tc;
+            if (decodeGh5Timecode(tc, gh5tc)) {
+                ltc.setTime(gh5tc.hh, gh5tc.mm, gh5tc.ss, gh5tc.ff);
+            }
+        }
+        // Set source label based on HDMI / RTC / free-run
+        if (hdmiOk) {
+            strcpy(tcSource, "HDMI");
+        } else
+#if RTC_ENABLE
+        if (rtcPresent) {
+            if (now - lastRtcReadMs >= 1000) {
+                lastRtcReadMs = now;
+                if (rtc.readTime(rtcHH, rtcMM, rtcSS)) {
+                    lastRtcSyncMs = now;
+                }
+            }
+            unsigned long elapsed = now - lastRtcSyncMs;
+            uint8_t ff = (elapsed * ltc.fps()) / 1000;
+            if (ff >= ltc.fps()) ff = ltc.fps() - 1;
+            ltc.setTime(rtcHH, rtcMM, rtcSS, ff);
+            strcpy(tcSource, "RTC");
+        } else
+#endif
+        {
+            strcpy(tcSource, "FREE");
+        }
+        static unsigned long lastTcPrint = 0;
+        if (now - lastTcPrint >= 5000) {
+            lastTcPrint = now;
+            Serial.printf("[TC] %s %02u:%02u:%02u:%02u.%02u hdmiOk=%d tcPresent=%d locked=%d\n",
+                          tcSource, ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff(),
+                          (int)hdmiOk, tcPresent, locked);
+        }
 
 #if FPS_AUTO_DETECT
         if (!locked) resetFpsDetect();

@@ -99,11 +99,6 @@ bool TC358743::begin(int sda_pin, int scl_pin, int reset_pin, uint32_t refclk_hz
     writeReg8(HPD_CTL, 0x00);
     delay(20);
 
-    // ---- CLKM pad power cycle (kernel init_hdmi: 0x8562 = 0x10/0x00) ----
-    writeReg8(CLKM_CTL, 0x10);    // power down clock management pads
-    delay(10);
-    writeReg8(CLKM_CTL, 0x00);    // power up (PLL_REF_FREQ=0 for 27 MHz)
-
     // ---- SYSCTL: reset blocks, wake up ----
     // Set IRRST + CECRST (put IR and CEC in reset)
     modifyReg16(SYSCTL, MASK_IRRST | MASK_CECRST, MASK_IRRST | MASK_CECRST);
@@ -254,11 +249,6 @@ bool TC358743::begin(int sda_pin, int scl_pin, int reset_pin, uint32_t refclk_hz
         }
     }
 
-    // ---- DDC bus reset (kernel does this after EDID write) ----
-    writeReg8(0x8556, 0x01);  // DDC_RESET = 1
-    delay(1);
-    writeReg8(0x8556, 0x00);  // DDC_RESET = 0
-
     // ---- Pulse HPD after EDID (wisape: HDMI spec requires HPD low 100ms when EDID changes) ----
     {
         writeReg8(HPD_CTL, 0x01);   // HPD high (manual)
@@ -330,7 +320,7 @@ bool TC358743::begin(int sda_pin, int scl_pin, int reset_pin, uint32_t refclk_hz
         uint16_t freqMon = readReg16(0x8692);  // FREQ_MON_DATA
         uint32_t tmdsClkKhz = (uint32_t)freqMon * (_refclk_hz / 1000) / 65536;
         Serial.printf("Pre-HPD: SYS_STATUS=0x%02X (DDC5V=%d TMDS=%d PLL=%d HDMI=%d)\n",
-                      st, (st >> 0) & 1, (st >> 1) & 1, (st >> 2) & 1, (st >> 4) & 1);
+                      st, (st >> 0) & 1, (st >> 1) & 1, (st >> 2) & 1, (st >> 3) & 1);
         Serial.printf("           CLK_STATUS=0x%02X (clk=%d dclk=%d stable=%d)\n",
                       clk, clk & 1, (clk >> 1) & 1, (clk >> 2) & 1);
         Serial.printf("         HDMI_CTL=0x%02X PHY_CTL1=0x%02X PHY_CTL2=0x%02X PHY_EN=0x%02X\n",
@@ -350,33 +340,43 @@ bool TC358743::begin(int sda_pin, int scl_pin, int reset_pin, uint32_t refclk_hz
     modifyReg16(CONFCTL, 0, MASK_VBUFEN | MASK_ABUFEN);
     delay(150);
 
-    // ---- HPD pulse (wisape pattern) then ANA_CTL/INIT_END ----
-    writeReg8(HPD_CTL, 0x01);       // exiting interlock: manual high
-    delay(20);
-    writeReg8(HPD_CTL, 0x00);       // low 100ms
-    delay(100);
-    writeReg8(HPD_CTL, 0x10);       // interlock mode (follows DDC5V)
-    delay(10);
-    Serial.printf("HPD_CTL (0x%04X) = 0x%02X\n",
+    // ---- HPD high — then DELAY before PHY config to let source start TMDS ----
+    writeReg8(HPD_CTL, 0x01);       // manual high
+    // Wait 5 seconds for source to detect HPD, read EDID, and start TMDS
+    // before we configure the PHY. Kernel reads EDID from source after HPD
+    // to verify DDC; here we just wait generously.
+    Serial.printf("HPD_CTL (0x%04X) = 0x%02X  waiting 5s for source TMDS...\n",
                   HPD_CTL, readReg8(HPD_CTL));
+    // Poll SYS_STATUS briefly to see if TMDS spontaneously appears
+    bool tmdsSpontaneous = false;
+    for (int i = 0; i < 100; i++) {
+        delay(50);
+        uint8_t st = readReg8(SYS_STATUS);
+        if ((st & 0x02) || ((st & 0x0C) == 0x0C)) { tmdsSpontaneous = true; break; }
+    }
+    if (tmdsSpontaneous) {
+        Serial.println("TMDS detected spontaneously before PHY config!");
+    } else {
+        Serial.println("No spontaneous TMDS — continuing with PHY config...");
+    }
 
-    // HPD low clears EDID_MODE — re‑enable DDC for source EDID reads
-    writeReg8(EDID_MODE, MASK_EDID_MODE_DDC2B | MASK_EDID_MODE_E_DDC);
-
-    // ---- HDMI PHY (kernel set_hdmi_phy) — AFTER HPD, matching kernel init_hdmi ----
-    writeReg8(PHY_EN, 0x00);                  // disable before config
-    writeReg8(PHY_CTL1, 0xA1);                // auto_rst1=1, freq_range=01 (25-80MHz)
+    // ---- HDMI PHY — always configure registers (no PHY_EN toggle if already active) ----
+    writeReg8(PHY_CTL1, 0x80);                // auto_rst1=1600µs, EN=0
+    writeReg8(PHY_CTL2, 0x07);                // auto-rst on TMDS det | in-range | valid
     writeReg8(PHY_BIAS, 0x40);
     writeReg8(PHY_CSQ, 0x0a);
     writeReg8(AVM_CTL, 45);
-    writeReg8(HDMI_DET, 0xC1);                // TMDS termination + AVD detection
-    writeReg8(ANA_CTL, 0x31);                 // DAC/PLL power on
-    writeReg8(PHY_EN, 0x01);                  // enable PHY
-    writeReg8(INIT_END, 0x01);                // HDMI RX init complete
+    if (!tmdsSpontaneous) {
+        writeReg8(PHY_EN, 0x00);              // disable before re-enable if never enabled
+        delay(10);
+        writeReg8(PHY_EN, 0x01);              // enable PHY
+    }
+    delay(500);                               // let PHY settle
 
+    writeReg8(EDID_MODE, MASK_EDID_MODE_DDC2B | MASK_EDID_MODE_E_DDC);
     writeReg32(CSI_START, 0x00000001);
 
-    // ---- Signal detection ----
+    // ---- Signal detection (always run, regardless of tmdsSpontaneous) ----
     {
         bool signalSeen = false;
         for (int i = 0; i < 100; i++) {
@@ -397,7 +397,6 @@ bool TC358743::begin(int sda_pin, int scl_pin, int reset_pin, uint32_t refclk_hz
             delay(100);
             writeReg8(HPD_CTL, 0x10);       // interlock
             delay(200);
-            // HPD low clears EDID_MODE — re‑enable DDC
             writeReg8(EDID_MODE, MASK_EDID_MODE_DDC2B | MASK_EDID_MODE_E_DDC);
             for (int i = 0; i < 100; i++) {
                 delay(50);
@@ -409,9 +408,9 @@ bool TC358743::begin(int sda_pin, int scl_pin, int reset_pin, uint32_t refclk_hz
                     break;
                 }
             }
-        }
-        if (!signalSeen) {
-            Serial.printf("Signal not detected within additional 5000ms\n");
+            if (!signalSeen) {
+                Serial.printf("Signal not detected within additional 5000ms\n");
+            }
         }
     }
 
@@ -447,7 +446,7 @@ bool TC358743::begin(int sda_pin, int scl_pin, int reset_pin, uint32_t refclk_hz
         Serial.printf("Post-init: SYS_STATUS=0x%02X (DDC5V=%d TMDS=%d PLL=%d HDMI=%d SYNC=%d)\n",
                       st,
                       (st >> 0) & 1, (st >> 1) & 1, (st >> 2) & 1,
-                      (st >> 4) & 1, (st >> 7) & 1);
+                      (st >> 3) & 1, (st >> 7) & 1);
         Serial.printf("           DDC(0x8543)=0x%02X HPD(0x8544)=0x%02X EDID_MODE(0x85C7)=0x%02X\n",
                       ddc, hpd, edidMode);
         Serial.printf("           HDMI_CTL=0x%02X PHY_CTL1=0x%02X PHY_CTL2=0x%02X PHY_EN=0x%02X\n",
@@ -525,12 +524,14 @@ static void probePD3400()
 
 bool TC358743::hasSignal() {
     uint8_t status = readReg8(SYS_STATUS);
-    return status & 0x02;
+    // TMDS bit (0x02) may read 0 on clone even when PLL is locked and HDMI is
+    // detected — also accept PLL locked | HDMI mode (bits 2-3 = 0x0C).
+    return (status & 0x02) || ((status & 0x0C) == 0x0C);
 }
 
 bool TC358743::isHdmiMode() {
     uint8_t status = readReg8(SYS_STATUS);
-    return status & 0x10;
+    return status & 0x08;  // bit 3 = HDMI_DET (kernel MASK_HDMI)
 }
 
 void TC358743::selectPacketType(uint8_t packetType) {
