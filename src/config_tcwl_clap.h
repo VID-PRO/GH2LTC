@@ -21,3 +21,9 @@
 #define BTN_DOWN_PIN     -1
 #define BTN_OK_PIN       -1
 #define BTN_CANCEL_PIN   -1
+
+// Battery ADC on GPIO 0 (ADC1_CH0), 200k:200k divider, 2000mAh LiPo
+#undef BAT_ADC_PIN
+#define BAT_ADC_PIN           0
+#undef BAT_FULL_RUNTIME_MIN
+#define BAT_FULL_RUNTIME_MIN  600   // 2000mAh / ~200mA ≈ 10h

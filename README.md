@@ -298,6 +298,22 @@ The TC358743 only supports HDMI 1.4 up to 1080p. Set the GH5's "HDMI Rec Output"
 
 **WebUI JS crashes on CLAP** — if the config drawer shows `—` for BLE status and the name input stays empty, the browser may be loading a cached version of the page from before the JS `typeof` guard fix. Hard-refresh (Cmd+Shift+R) to load the updated script. The issue was a `ReferenceError` on `oledToggle`/`ltcToggle` (excluded by `#ifndef TCWL_CLAP`) that propagated out of an IIFE and halted the entire `<script>` block before `pollBleLtc()` could register.
 
+## ⚠️ MAX7219 Boot Glitch (CLAP)
+
+The LED matrix may show **all LEDs on** briefly at power-on, especially on low‑power USB ports. This is a hardware limitation, not a firmware bug:
+
+- **Root cause:** ESP32-C3 GPIO 2 (MAX7219 DIN) is a strapping pin pulled HIGH during boot. GPIO 3 (MAX7219 CS) is undefined during the ~100 ms boot‑ROM/bootloader phase. If CS floats LOW, the MAX7219 latches whatever is on DIN (HIGH → all LEDs on).
+- **Slow USB ports** (e.g., MacBook) have a gradual voltage ramp that delays the ESP32-C3's startup, widening the window where CS is undefined.
+- **Firmware** already drives CS=HIGH, DIN=LOW, CLK=LOW at the earliest possible point (top of `setup()` and again in `Max7219Display::begin()`), but cannot cover the boot‑ROM phase.
+
+**Hardware fix — add a 10 kΩ pull‑up resistor:**
+
+```
+GPIO 3 (MAX7219 CS) ────[ 10kΩ ]──── +3.3V
+```
+
+This holds CS HIGH from the moment power is applied, preventing the MAX7219 from latching any data during boot. A 4.7 kΩ resistor also works. The fix applies to all builds using the MAX7219 matrix (CLAP).
+
 ---
 
 ## Schematics

@@ -33,6 +33,8 @@
 #undef LTC_IN_PIN
 #define LTC_IN_PIN           21
 
-// XIAO ESP32-C3: D0 = GPIO 2 (ADC1_CH2), 200k:200k divider
+// XIAO ESP32-C3: D0 = GPIO 2 (ADC1_CH2), 200k:200k divider, 800mAh LiPo
 #undef BAT_ADC_PIN
 #define BAT_ADC_PIN           2
+#undef BAT_FULL_RUNTIME_MIN
+#define BAT_FULL_RUNTIME_MIN  600   // 800mAh / ~80mA ≈ 10h
