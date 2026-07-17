@@ -781,10 +781,26 @@ static void hdmiLoop() {
 
     bool locked = tcPresent ? tc.hasSignal() : false;
 
-    // Periodic HPD retry when TMDS stays 0 for >30s
+    // Track whether we've ever seen a signal — used by the retry block below
+    // to decide whether to do a full chip reset (first-time acquisition only).
+    static bool everLocked = false;
+    if (locked) everLocked = true;
+
+    // When no signal detected, make sure HPD is in manual mode.
+    // Interlock mode (0x10) creates a deadlock: HPD=low → no TMDS → PLL unlocked → HPD stays low.
+    if (tcPresent && !locked) {
+        uint8_t hpdCtl = tc.readReg8(HPD_CTL);
+        if ((hpdCtl & 0x10) && !(hpdCtl & 0x01)) {
+            Serial.println(F("HDMI: HPD in interlock mode — switching to manual high"));
+            tc.writeReg8(HPD_CTL, 0x01);
+            delay(200);
+        }
+    }
+
+    // Periodic HPD retry when TMDS stays 0 for >10s
     if (tcPresent && !locked) {
         static unsigned long lastHpdRetry = 0;
-        if (now - lastHpdRetry > 30000) {
+        if (now - lastHpdRetry > 10000) {
             lastHpdRetry = now;
             uint8_t s = tc.readReg8(SYS_STATUS);
             uint16_t f = tc.readReg16(SYS_FREQ0);
@@ -797,36 +813,45 @@ static void hdmiLoop() {
             uint16_t freqMon = tc.readReg16(0x8692);  // FREQ_MON_DATA
             uint32_t tmdsClk = (uint32_t)freqMon * (tc.refclkHz() / 1000) / 65536;            uint8_t p1 = tc.readReg8(PHY_CTL1);
             uint8_t p2 = tc.readReg8(PHY_CTL2);
-            Serial.printf("HDMI: TMDS=0 30s — SYS_STATUS=0x%02X SYS_FREQ=%u (%.1fMHz) CHIP_R16=0x%04X CHIP_R8=0x%02X/0x%02X FREQ_MON=0x%04X TMDS_CLK=%ukHz PHY_CTL1=0x%02X PHY_CTL2=0x%02X HDMI_CTL=0x%02X PHY_EN=0x%02X\n",
+            uint8_t hpd = tc.readReg8(HPD_CTL);
+            Serial.printf("HDMI: TMDS=0 10s — SYS_STATUS=0x%02X SYS_FREQ=%u (%.1fMHz) CHIP_R16=0x%04X CHIP_R8=0x%02X/0x%02X FREQ_MON=0x%04X TMDS_CLK=%ukHz PHY_CTL1=0x%02X PHY_CTL2=0x%02X HDMI_CTL=0x%02X PHY_EN=0x%02X HPD_CTL=0x%02X\n",
                           s, f, f * 10.0f / 1000.0f,
                           chip16, chipLo, chipHi,
                           freqMon, tmdsClk, p1, p2,
-                          tc.readReg8(HDMI_CTL), tc.readReg8(PHY_EN));
-            // Try explicit freq_range 25-80MHz for 1080p (clone may not support auto-range)
-            tc.writeReg8(PHY_EN, 0x00);  // disable PHY first
-            delay(5);
-            // CLKM_CTL aliases PLLCTL0 low byte — set refclk, then restore PLL
-            tc.writeReg8(CLKM_CTL, (tc.refclkHz() == 42000000) ? 0x01 : 0x00);
-            tc.writeReg16(PLLCTL0, (tc.refclkHz() == 42000000) ? 0x60A1 : 0x308F);
-            delay(5);
-            tc.writeReg8(PHY_CTL1, 0x81);  // freq_range=01 (25-80MHz), auto_rst1=1
-            delay(5);
-            tc.writeReg8(PHY_CTL1, 0x81);  // freq_range=01 (25-80MHz), auto_rst1=1
-            delay(5);
-            tc.writeReg8(PHY_EN, 0x01);  // re-enable PHY
-            delay(20);
+                          tc.readReg8(HDMI_CTL), tc.readReg8(PHY_EN), hpd);
+            // First attempt: just toggle HPD so the source re-detects (no PHY_EN
+            // change — clone PHY may not recover after PHY_EN toggle without TMDS).
             tc.writeReg8(HPD_CTL, 0x00);  // HPD low
-            delay(200);                    // longer low period for source to notice
-            tc.writeReg8(HPD_CTL, 0x01);  // HPD high (manual force — not auto/interlock)
-            delay(1000);                   // give source time to start sending
+            delay(200);
+            tc.writeReg8(HPD_CTL, 0x01);  // HPD high (manual)
+            delay(2000);                   // give source time to read EDID + start TMDS
             tc.writeReg8(EDID_MODE, MASK_EDID_MODE_DDC2B | MASK_EDID_MODE_E_DDC);
-            // Re-measure after the cycle to see if anything changed
-            tc.writeReg8(0x8690, 0x01);  // FREQ_MON_CTL
-            delay(5);
-            freqMon = tc.readReg16(0x8692);
-            tmdsClk = (uint32_t)freqMon * (tc.refclkHz() / 1000) / 65536;            s = tc.readReg8(SYS_STATUS);
-            Serial.printf("HDMI: post-retry — SYS_STATUS=0x%02X FREQ_MON=0x%04X TMDS_CLK=%ukHz\n",
-                          s, freqMon, tmdsClk);
+            delay(100);
+            s = tc.readReg8(SYS_STATUS);
+            Serial.printf("HDMI: post-HPD-toggle — SYS_STATUS=0x%02X\n", s);
+            // Full chip reset only when we've never successfully locked (first-time
+            // acquisition).  Once we've seen a signal, a disconnect just falls back
+            // to free‑run without further disruption.
+            if (!(s & 0x02) && ((s & 0x0C) != 0x0C)) {
+                if (!everLocked) {
+                    Serial.println(F("HDMI: no signal after HPD toggle — resetting chip..."));
+                    pinMode(TC_RESET_PIN, OUTPUT);
+                    digitalWrite(TC_RESET_PIN, LOW);
+                    delay(200);
+                    digitalWrite(TC_RESET_PIN, HIGH);
+                    delay(500);
+                    tcPresent = tc.begin(TC_I2C_SDA_PIN, TC_I2C_SCL_PIN, TC_RESET_PIN, TC_REFCLK_HZ);
+                    if (tcPresent) {
+                        s = tc.readReg8(SYS_STATUS);
+                        Serial.printf("HDMI: post-reset — SYS_STATUS=0x%02X tcPresent=%d\n",
+                                      s, tcPresent);
+                    } else {
+                        Serial.println(F("HDMI: chip does not respond after reset!"));
+                    }
+                } else {
+                    Serial.println(F("HDMI: no signal after HPD toggle — free‑running (everLocked)"));
+                }
+            }
         }
     }
 

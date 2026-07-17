@@ -341,6 +341,14 @@ GPIO 3 (MAX7219 CS) ────[ 10kΩ ]──── +3.3V
 
 This holds CS HIGH from the moment power is applied, preventing the MAX7219 from latching any data during boot. A 4.7 kΩ resistor also works. The fix applies to all builds using the MAX7219 matrix (CLAP).
 
+## Hotplug: HDMI connected after boot
+
+If the system boots without HDMI and then a source is plugged in, the TC358743 should auto-detect the new TMDS signal. If it doesn't:
+
+1. **HPD interlock deadlock**: `HPD_CTL` in interlock mode (`0x10`) makes HPD follow PHY lock status. With no TMDS the PLL is unlocked → HPD low → source doesn't transmit → TMDS never appears. The fix sets HPD to **manual high** (`0x01`) at the end of `begin()`. The runtime loop in `hdmiLoop()` also checks and corrects the HPD mode every iteration when `!locked`.
+2. **10‑second retry**: If `hasSignal()` still returns false, a full PHY reset + HPD toggle fires every 10 s (down from 30 s). This handles picky sources that need an HPD edge to re-detect.
+3. **EDID**: After `begin()`, the EDID is already written to SRAM. The source reads it via DDC once HPD goes high. No re‑write needed on hotplug.
+
 ---
 
 ## Schematics

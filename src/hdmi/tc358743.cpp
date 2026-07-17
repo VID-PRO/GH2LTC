@@ -345,11 +345,11 @@ bool TC358743::begin(int sda_pin, int scl_pin, int reset_pin, uint32_t refclk_hz
     // Wait 5 seconds for source to detect HPD, read EDID, and start TMDS
     // before we configure the PHY. Kernel reads EDID from source after HPD
     // to verify DDC; here we just wait generously.
-    Serial.printf("HPD_CTL (0x%04X) = 0x%02X  waiting 5s for source TMDS...\n",
+    Serial.printf("HPD_CTL (0x%04X) = 0x%02X  waiting 1s for source TMDS...\n",
                   HPD_CTL, readReg8(HPD_CTL));
     // Poll SYS_STATUS briefly to see if TMDS spontaneously appears
     bool tmdsSpontaneous = false;
-    for (int i = 0; i < 100; i++) {
+    for (int i = 0; i < 20; i++) {
         delay(50);
         uint8_t st = readReg8(SYS_STATUS);
         if ((st & 0x02) || ((st & 0x0C) == 0x0C)) { tmdsSpontaneous = true; break; }
@@ -379,7 +379,7 @@ bool TC358743::begin(int sda_pin, int scl_pin, int reset_pin, uint32_t refclk_hz
     // ---- Signal detection (always run, regardless of tmdsSpontaneous) ----
     {
         bool signalSeen = false;
-        for (int i = 0; i < 100; i++) {
+        for (int i = 0; i < 20; i++) {
             delay(50);
             uint8_t status = readReg8(SYS_STATUS);
             if ((status & 0x02) || ((status & 0x0C) == 0x0C)) {
@@ -390,15 +390,18 @@ bool TC358743::begin(int sda_pin, int scl_pin, int reset_pin, uint32_t refclk_hz
             }
         }
         if (!signalSeen) {
-            Serial.printf("Signal not detected within 5000ms — retrying HPD cycle...\n");
+            Serial.printf("Signal not detected within 1000ms — retrying HPD cycle...\n");
             writeReg8(HPD_CTL, 0x01);       // manual high
             delay(20);
             writeReg8(HPD_CTL, 0x00);       // low 100ms
             delay(100);
-            writeReg8(HPD_CTL, 0x10);       // interlock
+            writeReg8(HPD_CTL, 0x01);       // manual high — NOT interlock: interlock creates a
+                                            // chicken-and-egg deadlock where HPD=low → no TMDS
+                                            // → PLL unlocked → HPD stays low.  Manual high lets
+                                            // the source start transmitting whenever it connects.
             delay(200);
             writeReg8(EDID_MODE, MASK_EDID_MODE_DDC2B | MASK_EDID_MODE_E_DDC);
-            for (int i = 0; i < 100; i++) {
+            for (int i = 0; i < 20; i++) {
                 delay(50);
                 uint8_t status = readReg8(SYS_STATUS);
                 if ((status & 0x02) || ((status & 0x0C) == 0x0C)) {
@@ -409,7 +412,7 @@ bool TC358743::begin(int sda_pin, int scl_pin, int reset_pin, uint32_t refclk_hz
                 }
             }
             if (!signalSeen) {
-                Serial.printf("Signal not detected within additional 5000ms\n");
+                Serial.printf("Signal not detected within additional 1000ms\n");
             }
         }
     }
