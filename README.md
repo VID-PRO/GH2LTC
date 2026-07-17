@@ -60,7 +60,7 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 | **MAX7219 CLK** | — | — | GPIO 10 |
 | **LTC output** | GPIO 6 | GPIO 6 | GPIO 6 |
 | **LTC input (master)** | — | GPIO 7 | — |
-| **Battery ADC (LiPo)** | GPIO 4 | GPIO 0 (A0) | — |
+| **Battery ADC (LiPo)** | GPIO 20 (ADC1_CH4)² | GPIO 0 (A0) | — |
 | **Button UP** | GPIO 10 | GPIO 8 | — |
 | **Button DOWN** | GPIO 9 | GPIO 9 | — |
 | **Button OK** | GPIO 2 | GPIO 2 | — |

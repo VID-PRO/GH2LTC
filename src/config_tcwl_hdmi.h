@@ -33,10 +33,10 @@
 #define BTN_OK_PIN        2
 #define BTN_CANCEL_PIN    3
 
-// Battery ADC disabled on HDMI — no ADC-capable pin available on ESP32-P4
-// that doesn't conflict with I2C or buttons.
+// Battery ADC — GPIO 20 (ADC1_CH4) on 40-pin header pin 10.
+// Wire a voltage divider from battery to this pin.
 #undef BAT_ADC_PIN
-#define BAT_ADC_PIN           -1
+#define BAT_ADC_PIN           20
 
 // TC358743 reference clock crystal on this module is 27 MHz (not 42 MHz)
 #define TC_REFCLK_HZ          27000000u
