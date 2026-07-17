@@ -748,7 +748,7 @@ static void hdmiLoop() {
 
     // AP health check
     static unsigned long lastApDiag = 0;
-    if (now - lastApDiag >= 5000) {
+    if (now - lastApDiag >= 30000) {
         lastApDiag = now;
         wifi_mode_t mode;
         esp_wifi_get_mode(&mode);
@@ -791,7 +791,6 @@ static void hdmiLoop() {
     if (tcPresent && !locked) {
         uint8_t hpdCtl = tc.readReg8(HPD_CTL);
         if ((hpdCtl & 0x10) && !(hpdCtl & 0x01)) {
-            Serial.println(F("HDMI: HPD in interlock mode — switching to manual high"));
             tc.writeReg8(HPD_CTL, 0x01);
             delay(200);
         }
@@ -806,32 +805,8 @@ static void hdmiLoop() {
         // Start a new retry cycle every 10s when idle
         if (hpdStep == 0 && now - lastHpdRetry > 10000) {
             lastHpdRetry = now;
-            // Verbose diagnostic only on first-ever retry; subsequent retries
-            // just log SYS_STATUS to avoid blocking the frame loop.
-            static bool firstDiag = true;
-            if (firstDiag) {
-                firstDiag = false;
-                uint8_t s = tc.readReg8(SYS_STATUS);
-                uint16_t f = tc.readReg16(SYS_FREQ0);
-                uint16_t chip16 = tc.readReg16(0x0000);
-                uint8_t chipLo = tc.readReg8(0x0000);
-                uint8_t chipHi = tc.readReg8(0x0001);
-                tc.writeReg8(0x8690, 0x01);
-                delay(5);
-                uint16_t freqMon = tc.readReg16(0x8692);
-                uint32_t tmdsClk = (uint32_t)freqMon * (tc.refclkHz() / 1000) / 65536;                uint8_t p1 = tc.readReg8(PHY_CTL1);
-                uint8_t p2 = tc.readReg8(PHY_CTL2);
-                uint8_t hpd = tc.readReg8(HPD_CTL);
-                Serial.printf("HDMI: TMDS=0 10s — SYS_STATUS=0x%02X SYS_FREQ=%u (%.1fMHz) CHIP_R16=0x%04X CHIP_R8=0x%02X/0x%02X FREQ_MON=0x%04X TMDS_CLK=%ukHz PHY_CTL1=0x%02X PHY_CTL2=0x%02X HDMI_CTL=0x%02X PHY_EN=0x%02X HPD_CTL=0x%02X\n",
-                              s, f, f * 10.0f / 1000.0f,
-                              chip16, chipLo, chipHi,
-                              freqMon, tmdsClk, p1, p2,
-                              tc.readReg8(HDMI_CTL), tc.readReg8(PHY_EN), hpd);
-            } else {
-                uint8_t s = tc.readReg8(SYS_STATUS);
-                Serial.printf("HDMI: TMDS=0 10s — SYS_STATUS=0x%02X\n", s);
-            }
-            // Step 1: HPD low
+            uint8_t s = tc.readReg8(SYS_STATUS);
+            if (s != 0x01) Serial.printf("H retry SYS_STATUS=0x%02X\n", s);
             tc.writeReg8(HPD_CTL, 0x00);
             hpdStep = 1;
             hpdTimer = now + 200;
@@ -856,18 +831,18 @@ static void hdmiLoop() {
         case 3: // EDID settle
             if (now >= hpdTimer) {
                 uint8_t s = tc.readReg8(SYS_STATUS);
-                Serial.printf("HDMI: post-HPD-toggle — SYS_STATUS=0x%02X\n", s);
                 static uint8_t resetAttempts = 0;
                 if (!(s & 0x02) && ((s & 0x0C) != 0x0C) && !everLocked && resetAttempts < 3) {
                     resetAttempts++;
-                    Serial.printf("HDMI: no signal — resetting chip (attempt %d/3)...\n", resetAttempts);
+                    Serial.printf("H reset chip %d/3\n", resetAttempts);
                     pinMode(TC_RESET_PIN, OUTPUT);
                     digitalWrite(TC_RESET_PIN, LOW);
                     hpdStep = 4;
                     hpdTimer = now + 200;
                 } else {
-                    if (!(s & 0x02) && ((s & 0x0C) != 0x0C))
-                        Serial.println(F("HDMI: no signal after HPD toggle — free‑running (everLocked)"));
+                    if (!(s & 0x02) && ((s & 0x0C) != 0x0C) && everLocked) {
+                        // unlocked after lock — silent, free-run continues
+                    }
                     hpdStep = 0;
                 }
             }
@@ -881,14 +856,8 @@ static void hdmiLoop() {
             break;
         case 5: // Reset pin high
             if (now >= hpdTimer) {
-                Serial.println(F("HDMI: re‑initialising chip..."));
                 tcPresent = tc.begin(TC_I2C_SDA_PIN, TC_I2C_SCL_PIN, TC_RESET_PIN, TC_REFCLK_HZ);
-                if (tcPresent) {
-                    uint8_t s = tc.readReg8(SYS_STATUS);
-                    Serial.printf("HDMI: post-reset — SYS_STATUS=0x%02X tcPresent=%d\n", s, tcPresent);
-                } else {
-                    Serial.println(F("HDMI: chip does not respond after reset!"));
-                }
+                if (!tcPresent) Serial.println(F("H: chip dead after reset"));
                 hpdStep = 0;
             }
             break;
@@ -998,7 +967,7 @@ static void hdmiLoop() {
             strcpy(tcSource, "FREE");
         }
         static unsigned long lastTcPrint = 0;
-        if (now - lastTcPrint >= 5000) {
+        if (now - lastTcPrint >= 30000) {
             lastTcPrint = now;
             Serial.printf("[TC] %s %02u:%02u:%02u:%02u.%02u hdmiOk=%d tcPresent=%d locked=%d\n",
                           tcSource, ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff(),
