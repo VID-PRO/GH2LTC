@@ -8,7 +8,7 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 
 | Category | Details |
 |----------|---------|
-| **HDMI timecode capture** | Reads GH5 InfoFrame metadata over I2C via TC358743 — no video decoding needed |
+| **HDMI timecode capture** | Decodes GH5 timecode from HDMI Vendor-Specific InfoFrame via TC358743 I2C — no video decoding needed |
 | **LTC generation** | Standalone SMPTE-12M biphase-mark encoder, esp_timer-driven, independent of I2C polling |
 | **Frame rates** | Auto-detected from HDMI (24/25/30/50/60 fps) or manual via web UI |
 | **RTC fallback** | Optional DS3231 preserves accurate time across power cycles with frame interpolation |
@@ -191,7 +191,7 @@ The 128×64 SSD1306 display is organized in three fixed zones (HDMI, LTC, and CL
 └──────────────────────────────────────────────────────┘
 ```
 
-* **Box 1 (14 px):** `L` (LTC master, synced), `F` (free-running, no RTC), `R` (free-running from RTC), or `B` (BLE synced slave)
+* **Box 1 (14 px):** `H` (HDMI timecode locked), `F` (free-running, no RTC), `R` (free-running from RTC), or `B` (BLE synced slave)
 * **Box 2 (12 px):** `A` (auto FPS) or `M` (manual FPS)
 * **Box 3 (42 px):** Framerate — `24fps`, `25fps`, `30fps`, `50fps`, `60fps`
 * **Box 4 (50 px):** LTC mode — `LTC OUT` or `LTC IN`
@@ -272,9 +272,26 @@ LTC hardware runs its own LTC generator, MAX7219 matrix, OLED, web UI, and physi
 
 ## Step 1: Reverse-engineer GH5 timecode bytes
 
-Set `REVERSE_ENGINEER_MODE 1` in `src/config.h`. Connect the GH5 via HDMI, open serial monitor, set the GH5's timecode to a known value, then diff the InfoFrame dumps as time advances to find which bytes change. Fill in `decodeGh5Timecode()` in `src/hdmi/panasonic_tc.h`, then set `REVERSE_ENGINEER_MODE 0`.
+Set `REVERSE_ENGINEER_MODE 1` in `src/config_tcwl_hdmi.h`. Connect the GH5 via HDMI, open serial monitor. The firmware scans all 256 CEA-861 packet types and dumps non-zero ACP FIFO data. The GH5's timecode is embedded in the Vendor-Specific InfoFrame (type `0x81`) accessible via the ACP packet FIFO (`TYP_ACP_SET` register), NOT via the standard `PK_VS` registers (which read zero on some modules).
 
-When no HDMI source is detected (`TMDS=0`) the system free-runs, generating LTC from its internal timer starting at 01:00:00:00 (or RTC if fitted). It auto-switches between HDMI and free-run as sources are connected/disconnected.
+**Confirmed byte layout** (ACP buffer at `PK_ACP_0HEAD` = `0x8790`, 31 bytes):
+
+| ACP offset | Contents | GH5 TC field |
+|------------|----------|-------------|
+| 0          | `0x81` — VSIF header | — |
+| 1          | Version (`0x01`) | — |
+| 2          | Length (`0x0E`) | — |
+| 3          | Rolling counter | — |
+| 4–5        | Panasonic OUI (`0xF0F9…`) | — |
+| 6–9        | VSIF payload (fixed) | — |
+| **10**     | **BCD** | **Frames (0–24 @ 25fps)** |
+| **11**     | **BCD** | **Seconds (0–59)** |
+| **12**     | **BCD** | **Minutes (0–59)** |
+| **13**     | **BCD** | **Hours (0–23, or 1–7 for day-of-week)** |
+
+Fill in `decodeGh5Timecode()` in `src/hdmi/panasonic_tc.h` using these offsets, then set `REVERSE_ENGINEER_MODE 0`.
+
+When no HDMI source is detected the system free-runs, generating LTC from its internal timer (or RTC if fitted). It auto-switches between HDMI and free-run as sources are connected/disconnected.
 
 ---
 
@@ -286,13 +303,21 @@ When no HDMI source is detected (`TMDS=0`) the system free-runs, generating LTC 
 
 ---
 
-## ⚠️ GH5 4K HDMI vs TC358743
+## ⚠️ GH5 HDMI output mode
 
-The TC358743 only supports HDMI 1.4 up to 1080p. Set the GH5's "HDMI Rec Output" to FHD in the camera menu — this project only reads InfoFrame metadata, not pixel data.
+The TC358743 only supports HDMI 1.4 up to 1080p. Set the GH5's "HDMI Rec Output" to **FHD (1080p)** in the camera menu — this project only reads InfoFrame metadata, not pixel data. The GH5 may output at a non-standard resolution/TMDS rate if configured incorrectly.
+
+## Timing: HPD → PHY config
+
+The TC358743 PLL requires the source's TMDS clock to be present before the PHY is configured. On init, HPD is asserted high, then the code waits up to 5 s for spontaneous TMDS detection (polling `SYS_STATUS`). If TMDS appears during this window, PHY register values are applied *without* toggling `PHY_EN` (which would break the lock). If no TMDS is detected, the PHY is fully configured (disable → set registers → re-enable) and a second 5 s detection loop runs, with an HPD-retry cycle on failure. The 27 MHz reference clock override (`TC_REFCLK_HZ`) and kernel-matching PHY register values (`PHY_CTL1=0x80`, `PHY_CTL2=0x07`, `PHY_BIAS=0x40`, `PHY_CSQ=0x0A`, `AVM_CTL=45`) are applied in both paths.
 
 ## Troubleshooting TC358743
 
-**CHIPID reads 0x0000** — the chip responds to I2C but doesn't identify as a genuine TC358743 (expected 0x44XX). Many breakout boards sold on AliExpress/Amazon are counterfeits or damaged. If you also see DDC5V toggling between 0→1 every 50ms and TMDS never goes high, the board is defective. No software change can fix this — replace the board.
+**CHIPID reads 0x0000** — the chip responds to I2C but doesn't identify as a genuine TC358743 (expected `0x44XX`). Many breakout boards sold on AliExpress/Amazon are counterfeits or damaged. Known clone quirks (confirmed on the C790 variant with CHIPID=0x0000):
+- `SYS_STATUS` bit 1 (TMDS clock) reads 0 even when PLL is locked and HDMI is active — use bits 2 (PLL) + 3 (HDMI) for signal detection instead
+- `FREQ_MON` always returns `0xFFFF` (measurement never completes)
+- `SYSCTL` bit 4 (CK_EN) is read-only (writing `0x0010` reads back `0x0000`)
+- `PK_VS` registers (`0x8770–0x878E`) return zero — read VSIF via ACP FIFO (`TYP_ACP_SET` = `0x81`, `PK_ACP_0HEAD` = `0x8790`) instead
 
 **Test with a known-good HDMI source** (laptop, PC) before blaming the GH5. If both produce `TMDS=0`, the TC358743 breakout board is the problem, not the camera.
 
