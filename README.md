@@ -65,8 +65,10 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 | **Button DOWN** | GPIO 9 | GPIO 9 | — |
 | **Button OK** | GPIO 2 | GPIO 2 | — |
 | **Button CANCEL** | GPIO 3 | GPIO 3 | — |
-| **TC358743 reset** | GPIO -1 (unused) | — | — |
+| **TC358743 reset** | GPIO 4 (CSI CE pin) | — | — |
 | **CSI connector** | 22-pin to TC358743 | — | — |
+
+> ² Also available: GPIO 21 (ADC1_CH5, pin 11), GPIO 22 (ADC1_CH6, pin 7), GPIO 23 (ADC1_CH7, pin 8). All on 40-pin header, no conflicts with I2C/buttons/LTC/reset/CSI.
 
 ---
 
