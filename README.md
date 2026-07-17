@@ -182,15 +182,15 @@ The 128×64 SSD1306 display is organized in three fixed zones (HDMI, LTC, and CL
 
 ```
 ┌─ Top line (8×13 font) ──────────────────────────────┐
-│ ≡  Device Name (centered)          [||||] 10h      │
+│ ≡  Device Name (centered)          [||||] 10h       │
 │    wifi icon                       battery  runtime │
-├─ Timecode (logisoso18, centered) ────────────────────┤
+├─ Timecode (logisoso18, centered) ───────────────────┤
 │                    88:88:88:88                      │
 ├─ Bottom line (6×10, 4 bordered boxes) ──────────────┤
-│ [H] [A] [25fps] [LTC OUT]                          │
+│ [H] [A] [25fps] [LTC OUT]                           │
 │  └─ master indicator   └─ FPS mode/rate  └─ LTC     │
-│  or F / lock / B                                     │
-└──────────────────────────────────────────────────────┘
+│  or F / lock / B                                    │
+└─────────────────────────────────────────────────────┘
 ```
 
 * **Box 1 (14 px):** `H` (HDMI timecode locked), `F` (free-running, no RTC), `R` (free-running from RTC), or `B` (BLE synced slave)
@@ -361,13 +361,13 @@ Once HDMI has been acquired at least once (`everLocked=true`), subsequent discon
 
 ```
 GPIO6 (LTC_OUT_PIN)
-  └───[ R1: 1k ]───┬───[ C2: 1µF ]───┬─── TRS TIP
-                    │                 │
+  └───[ R1: 1k ]────┬───[ C2: 1µF ]──┬─── TRS TIP
+                    │                │
                  [ C1: 4.7nF ]    [ R2: 20k ]
-                    │                 │
+                    │                │
                    GND               │
                                      │
-GND ────────────────────────────────┴─── TRS SLEEVE
+GND ─────────────────────────────────┴─── TRS SLEEVE
 ```
 
 ### LTC Input (TC-WL-LTC master mode)
