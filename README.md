@@ -311,7 +311,7 @@ The TC358743 only supports HDMI 1.4 up to 1080p. Set the GH5's "HDMI Rec Output"
 
 ## Timing: HPD → PHY config
 
-The TC358743 PLL requires the source's TMDS clock to be present before the PHY is configured. On init, HPD is asserted high, then the code waits up to 5 s for spontaneous TMDS detection (polling `SYS_STATUS`). If TMDS appears during this window, PHY register values are applied *without* toggling `PHY_EN` (which would break the lock). If no TMDS is detected, the PHY is fully configured (disable → set registers → re-enable) and a second 5 s detection loop runs, with an HPD-retry cycle on failure. The 27 MHz reference clock override (`TC_REFCLK_HZ`) and kernel-matching PHY register values (`PHY_CTL1=0x80`, `PHY_CTL2=0x07`, `PHY_BIAS=0x40`, `PHY_CSQ=0x0A`, `AVM_CTL=45`) are applied in both paths.
+The TC358743 PLL requires the source's TMDS clock to be present before the PHY is configured. On init, HPD is asserted high, then the code waits up to 1 s for spontaneous TMDS detection (20 × 50 ms polling `SYS_STATUS`). If TMDS appears during this window, PHY register values are applied *without* toggling `PHY_EN` (which would break the lock). If no TMDS is detected, the PHY is fully configured (disable → set registers → re-enable) and a second 1 s detection loop runs, with an HPD-retry cycle on failure. The 27 MHz reference clock override (`TC_REFCLK_HZ`) and kernel-matching PHY register values (`PHY_CTL1=0x80`, `PHY_CTL2=0x07`, `PHY_BIAS=0x40`, `PHY_CSQ=0x0A`, `AVM_CTL=45`) are applied in both paths.
 
 ## Troubleshooting TC358743
 
@@ -320,6 +320,7 @@ The TC358743 PLL requires the source's TMDS clock to be present before the PHY i
 - `FREQ_MON` always returns `0xFFFF` (measurement never completes)
 - `SYSCTL` bit 4 (CK_EN) is read-only (writing `0x0010` reads back `0x0000`)
 - `PK_VS` registers (`0x8770–0x878E`) return zero — read VSIF via ACP FIFO (`TYP_ACP_SET` = `0x81`, `PK_ACP_0HEAD` = `0x8790`) instead
+- **PHY_EN toggle without TMDS permanently breaks detection** — enabling the PHY (`PHY_EN=1`) when no TMDS clock is present puts the PLL in a state where it can never re-lock, even after PHY `disable→re-enable`. The fix: keep PHY disabled, toggle HPD so the source starts transmitting, *then* enable PHY (TMDS already present). See [Hotplug](#hotplug-hdmi-connected-after-boot).
 
 **Test with a known-good HDMI source** (laptop, PC) before blaming the GH5. If both produce `TMDS=0`, the TC358743 breakout board is the problem, not the camera.
 
@@ -343,11 +344,14 @@ This holds CS HIGH from the moment power is applied, preventing the MAX7219 from
 
 ## Hotplug: HDMI connected after boot
 
-If the system boots without HDMI and then a source is plugged in, the TC358743 should auto-detect the new TMDS signal. If it doesn't:
+If the system boots without HDMI and then a source is plugged in, the TC358743 hotplug detection follows a two-step fallback:
 
-1. **HPD interlock deadlock**: `HPD_CTL` in interlock mode (`0x10`) makes HPD follow PHY lock status. With no TMDS the PLL is unlocked → HPD low → source doesn't transmit → TMDS never appears. The fix sets HPD to **manual high** (`0x01`) at the end of `begin()`. The runtime loop in `hdmiLoop()` also checks and corrects the HPD mode every iteration when `!locked`.
-2. **10‑second retry**: If `hasSignal()` still returns false, a full PHY reset + HPD toggle fires every 10 s (down from 30 s). This handles picky sources that need an HPD edge to re-detect.
-3. **EDID**: After `begin()`, the EDID is already written to SRAM. The source reads it via DDC once HPD goes high. No re‑write needed on hotplug.
+1. **HPD toggle** (fast, runs every 10 s): Pulls HPD low for 200 ms, then high for 2 s, then checks `SYS_STATUS`. No `PHY_EN` change — the clone PHY cannot recover after being enabled without TMDS, so we avoid toggling it.
+2. **Chip reset + re-init** (slow, runs once during first-time acquisition only): If `SYS_STATUS` still shows no signal and we've *never* successfully locked (`!everLocked`), toggle `TC_RESET_PIN` (GPIO 4) and re-run `tc.begin()`. This replicates the boot-time sequence where TMDS is present before PHY config.
+
+Once HDMI has been acquired at least once (`everLocked=true`), subsequent disconnects only do step 1 (HPD toggle). The LTC free‑runs without chip‑reset disruption.
+
+**EDID**: Written to SRAM during `begin()`. The source reads it via DDC once HPD goes high. No re‑write needed on hotplug.
 
 ---
 
