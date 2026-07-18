@@ -479,7 +479,7 @@ static bool tryConnectDevice(BLEAdvertisedDevice &dev) {
 void bleTimecodeInit() {
     blePrefs.begin(NVS_NS, false);
     bleLtcRole = blePrefs.getUChar("role", TCWL_MODE_LTC);
-    String savedName = blePrefs.getString("ltc_name", "TC-WL-LTC");
+    String savedName = blePrefs.isKey("ltc_name") ? blePrefs.getString("ltc_name", "") : "TC-WL-LTC";
     String savedAddr = blePrefs.isKey("hdmi") ? blePrefs.getString("hdmi_addr", "") : "";
     blePrefs.end();
 

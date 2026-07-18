@@ -1319,11 +1319,11 @@ void setup() {
 #if TCWL_CLAP
         char defaultClapName[33];
         snprintf(defaultClapName, sizeof(defaultClapName), "TC-WL-CLAP-%s", macSuffix);
-        String bleName = blePrefs.getString("ltc_name", defaultClapName);
+        String bleName = blePrefs.isKey("ltc_name") ? blePrefs.getString("ltc_name", "") : defaultClapName;
         strncpy(apSsid, bleName.c_str(), sizeof(apSsid) - 1);
         apSsid[sizeof(apSsid) - 1] = '\0';
 #elif TCWL_HDMI
-        String bleName = blePrefs.getString("name", "TC-WL-HDMI");
+        String bleName = blePrefs.isKey("name") ? blePrefs.getString("name", "") : "TC-WL-HDMI";
         if (bleName == "TC-WL-HDMI") {
             snprintf(apSsid, sizeof(apSsid), "TC-WL-HDMI-%s", macSuffix);
         } else {
@@ -1334,13 +1334,13 @@ void setup() {
         if (bleGetMode() == TCWL_MODE_LTC_MASTER) {
             char defaultName[33];
             snprintf(defaultName, sizeof(defaultName), "TC-WL-LTC-%s", macSuffix);
-            String bleName = blePrefs.getString("ltc_name", defaultName);
+            String bleName = blePrefs.isKey("ltc_name") ? blePrefs.getString("ltc_name", "") : defaultName;
             strncpy(apSsid, bleName.c_str(), sizeof(apSsid) - 1);
             apSsid[sizeof(apSsid) - 1] = '\0';
         } else {
             char defaultSlaveName[33];
             snprintf(defaultSlaveName, sizeof(defaultSlaveName), "TC-WL-LTC-%s", macSuffix);
-            String bleName = blePrefs.getString("ltc_name", defaultSlaveName);
+            String bleName = blePrefs.isKey("ltc_name") ? blePrefs.getString("ltc_name", "") : defaultSlaveName;
             strncpy(apSsid, bleName.c_str(), sizeof(apSsid) - 1);
             apSsid[sizeof(apSsid) - 1] = '\0';
         }
