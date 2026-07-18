@@ -149,7 +149,7 @@ Open `http://192.168.4.1` (AP mode) or the ESP's STA IP. The header displays a c
 | **WiFi config** | SSID/password input, saved to NVS, forget option |
 | **BLE (HDMI)** | Change broadcast name, view connected client count, disconnect all |
 | **BLE (LTC master)** | Same server controls as HDMI (change server name, view/disconnect clients), plus LTC decoder status |
-| **BLE (LTC/CLAP slave)** | Scan for HDMI or LTC-master server devices (name + address), tap to connect, view server name, BLE status on OLED (`F` = not synced, `B` = synced) |
+| **BLE (LTC/CLAP slave)** | Scan for HDMI or LTC-master server devices (name + address), tap to connect, view server name; lock box shows `B` when synced, `F` when not |
 
 ---
 
@@ -185,18 +185,19 @@ The 128×64 SSD1306 display is organized in three fixed zones (HDMI, LTC, and CL
 
 ```
 ┌─ Top line (8×13 font) ──────────────────────────────┐
-│ ≡  Device Name (centered)          [||||] 10h       │
-│    wifi icon                       battery  runtime │
+│ B ≡ Device Name (centered)          [||||] 10h      │
+│ ble    wifi icon                     battery  runtime│
+│ icon                                                │
 ├─ Timecode (logisoso18, centered) ───────────────────┤
 │                    88:88:88:88                      │
 ├─ Bottom line (6×10, 4 bordered boxes) ──────────────┤
 │ [H] [A] [25fps] [LTC OUT]                           │
 │  └─ master indicator   └─ FPS mode/rate  └─ LTC     │
-│  or F / lock / B                                    │
+│  or F / R / B / L                                   │
 └─────────────────────────────────────────────────────┘
 ```
 
-* **Box 1 (14 px):** `H` (HDMI timecode locked), `F` (free-running, no RTC), `R` (free-running from RTC), or `B` (BLE synced slave)
+* **Box 1 (14 px):** `H` (HDMI locked), `L` (LTC input locked), `B` (BLE synced slave), `R` (RTC free-run), `F` (free-run, no RTC)
 * **Box 2 (12 px):** `A` (auto FPS) or `M` (manual FPS)
 * **Box 3 (42 px):** Framerate — `24fps`, `25fps`, `30fps`, `50fps`, `60fps`
 * **Box 4 (50 px):** LTC mode — `LTC OUT` or `LTC IN`
@@ -277,7 +278,8 @@ A custom 128-bit BLE service (`9a6f0001-...`) transfers timecode from HDMI to LT
 
 - **HDMI**: advertises the service, sends a notification on every frame tick via `bleTimecodeUpdate()`. Broadcast name configurable via web UI; disconnect button removes all connected clients.
 - **TC-WL-LTC (master)**: same BLE server role as HDMI — receives LTC audio via GPIO 7 decoder, advertises timecode over BLE. No HDMI hardware needed; can act as a standalone LTC-to-BLE bridge for slave units.
-- **LTC/CLAP (slave)**: scans for devices offering the service (showing name + address), taps one to connect. On receiving a timecode packet it jams the local `LtcEncoder` in real time. The web UI displays the connected server's device name.
+- **LTC (slave)**: scans for devices offering the service, connects, receives timecode. Also advertises its own BLE server with the config characteristic (`9a6f0004`) — the Android app can connect and send config commands (FPS, jam, mode, brightness, etc.) even while the slave is synced to a master. OLED shows a 'B' icon in the top line when the Android app is connected.
+- **CLAP**: BLE client only — scans, connects, subscribes to timecode notifications. No server advertising.
 
 LTC hardware runs its own LTC generator, MAX7219 matrix, OLED, web UI, and physical buttons with on-device menu. In master mode it decodes LTC from GPIO 7 and acts as a BLE timecode server; in slave mode it receives timecode via BLE and generates standalone LTC output. CLAP is client-only (no LTC input/output, LED matrix + OLED main screen, no physical buttons). The HDMI board has no MAX7219 hardware and uses the OLED for status display plus a menu system controlled by four physical buttons.
 
@@ -485,6 +487,8 @@ The wrapper properties file (`gradle-wrapper.properties`) is kept tracked to pin
 ### GitHub Actions
 
 The `android.yml` workflow builds the APK on every push/PR that touches `android/`. The APK is uploaded as a workflow artifact — download from the Actions tab.
+
+When a GitHub Release is published, the workflow also uploads `TC-WL.apk` to the release assets alongside the firmware binaries (`TC-WL-{HDMI,LTC,CLAP}_{firmware,bootloader,partitions}.bin`) built by `build-firmware.yml`. The release notes include flash instructions with the correct artifact filenames.
 
 ---
 

@@ -1226,7 +1226,7 @@ static void ltcLoop() {
 #if OLED_ENABLE
         if (webui.oledEnabled()) {
             fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
-            uint8_t lockSt = bleTimecodeConnected() ? 1 : (rtcPresent ? 2 : 0);
+            uint8_t lockSt = bleTimecodeConnected() ? 3 : (rtcPresent ? 2 : 0);
             oled.update(tcStr, ltc.fps(), lockSt, gDeviceName, webui.autoFps(), "OUT", 0, readBatteryPct(), 'S', bleTimecodeConnectedCount() > 0);
         }
 #if defined(TCWL_LTC) && BTN_UP_PIN >= 0
