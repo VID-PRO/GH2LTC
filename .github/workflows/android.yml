@@ -33,11 +33,11 @@ jobs:
         run: gradle wrapper --gradle-version 8.5
 
       - name: Build APK
-        run: ./gradlew assembleDebug
+        run: ./gradlew assembleRelease
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: TC-WL
+          path: android/app/build/outputs/apk/release/TC-WL.apk
           if-no-files-found: error

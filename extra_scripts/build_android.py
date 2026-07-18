@@ -6,7 +6,7 @@ Import("env")
 
 def build_android(target, source, env):
     android_dir = os.path.join(env.subst("$PROJECT_DIR"), "android")
-    apk_out = os.path.join(android_dir, "app", "build", "outputs", "apk", "debug")
+    apk_out = os.path.join(android_dir, "app", "build", "outputs", "apk", "release")
 
     if not os.path.isdir(android_dir):
         print("Android project not found at %s" % android_dir)
@@ -21,7 +21,7 @@ def build_android(target, source, env):
     print("Building Android app...")
 
     java_home = os.environ.get("JAVA_HOME", "")
-    gradle_cmd = [gradlew, "assembleDebug"]
+    gradle_cmd = [gradlew, "assembleRelease"]
     gradle_env = os.environ.copy()
     if java_home:
         gradle_env["JAVA_HOME"] = java_home

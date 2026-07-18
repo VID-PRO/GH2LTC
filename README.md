@@ -454,16 +454,33 @@ Config commands are sent over BLE characteristic `9a6f0004` as ASCII `cmd:value`
 
 ### Building
 
+**Prerequisites:** JDK 17, Android SDK (set `ANDROID_HOME` or `local.properties`).
+
 ```bash
 # Generate Gradle wrapper (first time only)
 cd android && gradle wrapper && cd ..
 
-# Build APK (requires JDK 17)
+# Build release APK (requires JDK 17)
 export JAVA_HOME=/usr/local/opt/openjdk@17
 pio run -t build_android
 ```
 
-The APK is at `android/app/build/outputs/apk/debug/app-debug.apk`.
+The signed release APK is at `android/app/build/outputs/apk/release/TC-WL.apk`.
+
+### Generated files (`.gitignore`)
+
+The Gradle build creates several generated files. These are already in `.gitignore`:
+
+| Path | Reason |
+|------|--------|
+| `android/app/build/` | Compiled APK, intermediates, R classes |
+| `android/.gradle/` | Gradle cache and daemon files |
+| `android/local.properties` | SDK path (machine-specific) |
+| `android/gradlew` / `gradlew.bat` | Wrapper scripts (generated) |
+| `android/gradle/wrapper/gradle-wrapper.jar` | Wrapper binary |
+| `android/gradle/libs/` | Downloaded distribution archives |
+
+The wrapper properties file (`gradle-wrapper.properties`) is kept tracked to pin the Gradle version.
 
 ### GitHub Actions
 
