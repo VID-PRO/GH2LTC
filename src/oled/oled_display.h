@@ -21,7 +21,8 @@ public:
     void update(const char *timecode, uint8_t fps, uint8_t lockState,
                 const char *deviceName, bool autoFps, const char *ltcMode,
                 uint8_t slaveCount = 0, uint8_t batteryPct = 255,
-                uint8_t masterIndicator = 0);
+                uint8_t masterIndicator = 0,
+                bool bleConnected = false);
     void setEnabled(bool en) { _enabled = en; }
     bool enabled() const { return _enabled; }
     Adafruit_SSD1306& display() { return _display; }

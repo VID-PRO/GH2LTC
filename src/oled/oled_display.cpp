@@ -44,7 +44,8 @@ static void drawWifiIcon(Adafruit_SSD1306 &d, int x, int y) {
 void OledDisplay::update(const char *timecode, uint8_t fps, uint8_t lockState,
                          const char *deviceName, bool autoFps,
                          const char *ltcMode, uint8_t slaveCount,
-                         uint8_t batteryPct, uint8_t masterIndicator) {
+                         uint8_t batteryPct, uint8_t masterIndicator,
+                         bool bleConnected) {
     (void)slaveCount;
     if (!_present || !_enabled) return;
     if (strcmp(timecode, _lastTc) == 0 && fps == _lastFps) return;
@@ -57,11 +58,21 @@ void OledDisplay::update(const char *timecode, uint8_t fps, uint8_t lockState,
     _display.setTextColor(SSD1306_WHITE);
     _display.setTextSize(1);
 
-    // ── Top line: WiFi icon + device name + battery + runtime ──
+    // ── Top line: icons + device name + battery + runtime ──
     int16_t x1, y1;
     uint16_t w, h;
 
-    drawWifiIcon(_display, 0, 0);
+    int iconRight = 0;
+    if (bleConnected) {
+        _display.setCursor(0, 1);
+        _display.print('B');
+        iconRight = 8;
+        drawWifiIcon(_display, iconRight, 0);
+        iconRight += 8;
+    } else {
+        drawWifiIcon(_display, 0, 0);
+        iconRight = 8;
+    }
 
     int bx = 95;
 
@@ -94,20 +105,20 @@ void OledDisplay::update(const char *timecode, uint8_t fps, uint8_t lockState,
     _display.setCursor(rx, 1);
     _display.print(runtime);
 
-    // device name: centered between WiFi icon and battery, truncated to fit
+    // device name: centered between icons and battery, truncated to fit
     const char *name = deviceName ? deviceName : "";
     _display.getTextBounds(name, 0, 0, &x1, &y1, &w, &h);
-    int avail = bx - 8;  // pixels available (WiFi end → battery start)
+    int avail = bx - iconRight;  // pixels available (icon end → battery start)
     if (w > avail) {
         // truncate — 6 px/char
         size_t maxChars = (size_t)avail / 6;
         char buf[64];
         snprintf(buf, sizeof(buf), "%.*s", (int)maxChars, name);
         _display.getTextBounds(buf, 0, 0, &x1, &y1, &w, &h);
-        _display.setCursor(8 + (avail - w) / 2, 1);
+        _display.setCursor(iconRight + (avail - w) / 2, 1);
         _display.print(buf);
     } else {
-        _display.setCursor(8 + (avail - w) / 2, 1);
+        _display.setCursor(iconRight + (avail - w) / 2, 1);
         _display.print(name);
     }
 

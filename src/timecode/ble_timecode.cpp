@@ -490,41 +490,43 @@ void bleTimecodeInit() {
 
     BLEDevice::init(ltcServerName);
 
-    if (bleLtcRole == TCWL_MODE_LTC_MASTER) {
-        ltcServer = BLEDevice::createServer();
-        ltcServer->setCallbacks(new LtcServerCallbacks());
+    // Always create BLE server so the Android app can connect and send
+    // config commands, regardless of master/slave role.
+    ltcServer = BLEDevice::createServer();
+    ltcServer->setCallbacks(new LtcServerCallbacks());
 
-        BLEService *svc = ltcServer->createService(bleTimecodeServiceUUID);
-        ltcTcChar = svc->createCharacteristic(
-            bleTimecodeCharUUID,
-            BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
-        );
-        uint8_t init[5] = {0, 0, 0, 0, 0};
-        ltcTcChar->setValue(init, 5);
+    BLEService *svc = ltcServer->createService(bleTimecodeServiceUUID);
+    ltcTcChar = svc->createCharacteristic(
+        bleTimecodeCharUUID,
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
+    );
+    uint8_t init[5] = {0, 0, 0, 0, 0};
+    ltcTcChar->setValue(init, 5);
 
-        BLECharacteristic *nameChar = svc->createCharacteristic(
-            bleTimecodeNameCharUUID,
-            BLECharacteristic::PROPERTY_WRITE
-        );
-        nameChar->setCallbacks(new LtcNameCallbacks());
-        nameChar->setValue("");
+    BLECharacteristic *nameChar = svc->createCharacteristic(
+        bleTimecodeNameCharUUID,
+        BLECharacteristic::PROPERTY_WRITE
+    );
+    nameChar->setCallbacks(new LtcNameCallbacks());
+    nameChar->setValue("");
 
-        BLECharacteristic *cfgChar = svc->createCharacteristic(
-            bleTimecodeConfigCharUUID,
-            BLECharacteristic::PROPERTY_WRITE
-        );
-        cfgChar->setCallbacks(new BleConfigCallbacks());
-        cfgChar->setValue("");
+    BLECharacteristic *cfgChar = svc->createCharacteristic(
+        bleTimecodeConfigCharUUID,
+        BLECharacteristic::PROPERTY_WRITE
+    );
+    cfgChar->setCallbacks(new BleConfigCallbacks());
+    cfgChar->setValue("");
 
-        svc->start();
+    svc->start();
 
-        BLEAdvertising *adv = BLEDevice::getAdvertising();
-        adv->addServiceUUID(bleTimecodeServiceUUID);
-        adv->setScanResponse(true);
-        adv->setMinPreferred(0x06);
-        adv->setMinPreferred(0x12);
-        BLEDevice::startAdvertising();
-    } else {
+    BLEAdvertising *adv = BLEDevice::getAdvertising();
+    adv->addServiceUUID(bleTimecodeServiceUUID);
+    adv->setScanResponse(true);
+    adv->setMinPreferred(0x06);
+    adv->setMinPreferred(0x12);
+    BLEDevice::startAdvertising();
+
+    if (bleLtcRole != TCWL_MODE_LTC_MASTER) {
         if (savedAddr.length()) {
             strncpy(selectedAddr, savedAddr.c_str(), sizeof(selectedAddr) - 1);
             selectedAddr[sizeof(selectedAddr) - 1] = '\0';
@@ -682,7 +684,6 @@ const char *bleTimecodeGetName() {
 }
 
 void bleTimecodeUpdate(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff) {
-    if (bleLtcRole != TCWL_MODE_LTC_MASTER) return;
     if (!ltcServerHasClients) return;
     uint8_t data[5] = {dd, hh, mm, ss, ff};
     ltcTcChar->setValue(data, 5);
@@ -709,7 +710,6 @@ void bleTimecodeDisconnectPeer(const char *address) {
 }
 
 uint8_t bleTimecodeConnectedCount() {
-    if (bleLtcRole != TCWL_MODE_LTC_MASTER) return 0;
     return ltcPeers.size();
 }
 
