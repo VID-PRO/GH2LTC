@@ -6,7 +6,13 @@
 extern const BLEUUID bleTimecodeServiceUUID;
 extern const BLEUUID bleTimecodeCharUUID;
 extern const BLEUUID bleTimecodeNameCharUUID;
+extern const BLEUUID bleTimecodeConfigCharUUID;
 #endif
+
+// BLE config command callback
+// Returns true if command was handled.
+typedef bool (*BleConfigCb)(const char *cmd, const char *val);
+void bleTimecodeSetConfigCallback(BleConfigCb cb);
 
 // Runtime mode management (always available)
 int bleGetMode();

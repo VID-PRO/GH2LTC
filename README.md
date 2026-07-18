@@ -18,6 +18,7 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 | **WiFi** | AP on boot; auto-STA connect to saved network; AP re-enables on disconnect |
 | **Reverse-engineer mode** | Dumps InfoFrame packets over serial to find GH5's exact timecode byte layout |
 | **BLE wireless sync** | HDMI advertises timecode via BLE notify; LTC/CLAP scan by service UUID, subscribe to notifications, run local LTC + display |
+| **BLE config** | Android app sends config commands (FPS, brightness, jam, mode, name, restart) over BLE config characteristic `9a6f0004` — no WiFi needed |
 
 ---
 
@@ -180,6 +181,8 @@ Open `http://192.168.4.1` (AP mode) or the ESP's STA IP. The header displays a c
 
 The 128×64 SSD1306 display is organized in three fixed zones (HDMI, LTC, and CLAP builds):
 
+[![Android APK](https://github.com/bloehdbj/TC-WL/actions/workflows/android.yml/badge.svg)](https://github.com/bloehdbj/TC-WL/actions/workflows/android.yml)
+
 ```
 ┌─ Top line (8×13 font) ──────────────────────────────┐
 │ ≡  Device Name (centered)          [||||] 10h       │
@@ -263,6 +266,14 @@ The ADC (12-bit, 11 dB attenuation) is read every 10 s; voltage is converted
 ## BLE Wireless Sync
 
 A custom 128-bit BLE service (`9a6f0001-...`) transfers timecode from HDMI to LTC/CLAP as 5-byte notifications (dd, hh, mm, ss, ff):
+
+### Characteristics
+
+| UUID | Name | Properties | Description |
+|------|------|------------|-------------|
+| `9a6f0002` | Timecode | READ + NOTIFY | 5-byte timecode packet (dd, hh, mm, ss, ff) |
+| `9a6f0003` | Name | WRITE | Peer announces its display name |
+| `9a6f0004` | Config | WRITE | ASCII `cmd:value` commands (FPS, brightness, jam, mode, name, restart, etc.) |
 
 - **HDMI**: advertises the service, sends a notification on every frame tick via `bleTimecodeUpdate()`. Broadcast name configurable via web UI; disconnect button removes all connected clients.
 - **TC-WL-LTC (master)**: same BLE server role as HDMI — receives LTC audio via GPIO 7 decoder, advertises timecode over BLE. No HDMI hardware needed; can act as a standalone LTC-to-BLE bridge for slave units.
@@ -419,6 +430,44 @@ not matter.
 For a simpler (but less robust) test, a direct connection may work if the
 LTC source swings rail-to-rail (0–3.3 V).  Most professional LTC outputs
 are 1 Vpp and *require* the amplifier above.
+
+---
+
+## Android Companion App
+
+The `android/` directory contains a Kotlin Compose app that connects to TC-WL devices over BLE.
+
+### Features
+
+| Feature | Description |
+|---------|-------------|
+| **Timecode display** | Large green monospace timecode, fullscreen, updates via BLE notifications |
+| **BLE connection** | Scan, tap to connect, auto-reconnect |
+| **FPS config** | 24/25/30/50/60, drop-frame toggle — sent over BLE config characteristic |
+| **Jam timecode** | Set dd:hh:mm:ss:ff via BLE |
+| **Device mode (LTC)** | Switch between master and slave mode over BLE (device restarts) |
+| **Brightness (CLAP)** | Slider for MAX7219 matrix intensity (0–15), only visible when connected to CLAP |
+| **Device name** | Change BLE broadcast name |
+| **Restart** | Remote reboot |
+
+Config commands are sent over BLE characteristic `9a6f0004` as ASCII `cmd:value` strings — no WiFi connection required once BLE is paired. The firmware parses the commands and applies them (same logic as the HTTP API).
+
+### Building
+
+```bash
+# Generate Gradle wrapper (first time only)
+cd android && gradle wrapper && cd ..
+
+# Build APK (requires JDK 17)
+export JAVA_HOME=/usr/local/opt/openjdk@17
+pio run -t build_android
+```
+
+The APK is at `android/app/build/outputs/apk/debug/app-debug.apk`.
+
+### GitHub Actions
+
+The `android.yml` workflow builds the APK on every push/PR that touches `android/`. The APK is uploaded as a workflow artifact — download from the Actions tab.
 
 ---
 

@@ -20,6 +20,24 @@ static const char *NVS_NS = "ble";
 const BLEUUID bleTimecodeServiceUUID("9a6f0001-5c9a-4b3e-8a2c-f12345678901");
 const BLEUUID bleTimecodeCharUUID("9a6f0002-5c9a-4b3e-8a2c-f12345678901");
 const BLEUUID bleTimecodeNameCharUUID("9a6f0003-5c9a-4b3e-8a2c-f12345678901");
+const BLEUUID bleTimecodeConfigCharUUID("9a6f0004-5c9a-4b3e-8a2c-f12345678901");
+
+static BleConfigCb bleConfigCb = nullptr;
+void bleTimecodeSetConfigCallback(BleConfigCb cb) { bleConfigCb = cb; }
+
+// ── BLE config characteristic callback ──────────────────────────
+class BleConfigCallbacks : public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic *pChar) override {
+        if (!bleConfigCb) return;
+        auto raw = pChar->getValue();
+        std::string val(raw.c_str(), raw.length());
+        size_t colon = val.find(':');
+        if (colon == std::string::npos) return;
+        std::string cmd = val.substr(0, colon);
+        std::string arg = val.substr(colon + 1);
+        bleConfigCb(cmd.c_str(), arg.c_str());
+    }
+};
 
 // =========================================================================
 // BLE HDMI — advertises timecode service, sends notifications
@@ -211,6 +229,13 @@ void bleTimecodeInit() {
     );
     nameChar->setCallbacks(new SlaveNameCallbacks());
     nameChar->setValue("");
+
+    BLECharacteristic *cfgChar = svc->createCharacteristic(
+        bleTimecodeConfigCharUUID,
+        BLECharacteristic::PROPERTY_WRITE
+    );
+    cfgChar->setCallbacks(new BleConfigCallbacks());
+    cfgChar->setValue("");
 
     svc->start();
 
@@ -483,6 +508,14 @@ void bleTimecodeInit() {
         );
         nameChar->setCallbacks(new LtcNameCallbacks());
         nameChar->setValue("");
+
+        BLECharacteristic *cfgChar = svc->createCharacteristic(
+            bleTimecodeConfigCharUUID,
+            BLECharacteristic::PROPERTY_WRITE
+        );
+        cfgChar->setCallbacks(new BleConfigCallbacks());
+        cfgChar->setValue("");
+
         svc->start();
 
         BLEAdvertising *adv = BLEDevice::getAdvertising();

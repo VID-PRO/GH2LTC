@@ -1462,6 +1462,92 @@ void setup() {
         }
 #endif
         Serial.println(F("done"));
+
+        // BLE config command callback — allows Android app to configure
+        // device over BLE instead of WiFi HTTP.
+        bleTimecodeSetConfigCallback([](const char *cmd, const char *val) -> bool {
+            if (strcmp(cmd, "fps") == 0) {
+                int fps = atoi(val);
+                if (fps >= 24 && fps <= 60) {
+                    ltc.setFps(fps, ltc.dropFrame());
+                    framePollMs = 1000 / fps;
+                    Preferences prefs;
+                    prefs.begin("ltc", false);
+                    prefs.putUChar("fps", fps);
+                    prefs.putBool("df", ltc.dropFrame());
+                    prefs.end();
+                }
+                return true;
+            }
+            if (strcmp(cmd, "df") == 0) {
+                ltc.setFps(ltc.fps(), atoi(val) != 0);
+                framePollMs = 1000 / ltc.fps();
+                Preferences prefs;
+                prefs.begin("ltc", false);
+                prefs.putUChar("fps", ltc.fps());
+                prefs.putBool("df", atoi(val) != 0);
+                prefs.end();
+                return true;
+            }
+            if (strcmp(cmd, "jam") == 0) {
+                unsigned dd, hh, mm, ss, ff;
+                if (sscanf(val, "%u %u %u %u %u", &dd, &hh, &mm, &ss, &ff) >= 4) {
+                    ltc.setTime(hh, mm, ss, ff);
+                    ltc.setDd(dd);
+                }
+                return true;
+            }
+            if (strcmp(cmd, "brightness") == 0) {
+#if WEBUI_ENABLE
+                webui.setBrightness(atoi(val));
+#endif
+                return true;
+            }
+            if (strcmp(cmd, "matrix") == 0) {
+#if WEBUI_ENABLE
+                webui.setMatrixEnabled(atoi(val) != 0);
+#endif
+                return true;
+            }
+            if (strcmp(cmd, "oled") == 0) {
+#if WEBUI_ENABLE
+                webui.setOledEnabled(atoi(val) != 0);
+#elif OLED_ENABLE
+                oled.setEnabled(atoi(val) != 0);
+#endif
+                return true;
+            }
+            if (strcmp(cmd, "ltc") == 0) {
+#if WEBUI_ENABLE
+                webui.setLtcEnabled(atoi(val) != 0);
+#else
+                ltc.setEnabled(atoi(val) != 0);
+#endif
+                return true;
+            }
+            if (strcmp(cmd, "name") == 0) {
+                bleTimecodeSetName(val);
+                return true;
+            }
+            if (strcmp(cmd, "restart") == 0) {
+                delay(100);
+                ESP.restart();
+                return true;
+            }
+#if TCWL_LTC
+            if (strcmp(cmd, "mode") == 0) {
+                if (strcmp(val, "master") == 0) {
+                    bleSetMode(TCWL_MODE_LTC_MASTER);
+                } else if (strcmp(val, "slave") == 0) {
+                    bleSetMode(TCWL_MODE_LTC);
+                }
+                delay(100);
+                ESP.restart();
+                return true;
+            }
+#endif
+            return false; // unknown command
+        });
 #ifdef TCWL_CLAP
         // Override stale BLE name left by another variant.
         {

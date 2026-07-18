@@ -30,6 +30,7 @@ uint8_t bleTimecodeConnectedCount() { return 0; }
 uint8_t bleTimecodeGetPeers(BlePeerInfo *, uint8_t) { return 0; }
 
 void bleTimecodeSetCallback(BleTimecodeCb) {}
+void bleTimecodeSetConfigCallback(BleConfigCb) {}
 void bleTimecodePoll() {}
 bool bleTimecodeConnected() { return false; }
 uint8_t bleTimecodeScan(BleScanResult *, uint8_t) { return 0; }
