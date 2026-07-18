@@ -61,4 +61,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload "${{ github.ref_name }}" android/app/build/outputs/apk/release/TC-WL.apk --clobber
+          gh release upload "${{ github.ref_name }}" app/build/outputs/apk/release/TC-WL.apk --clobber

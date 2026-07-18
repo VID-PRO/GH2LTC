@@ -86,32 +86,47 @@ jobs:
       - name: Generate release notes
         run: |
           gh release view "${{ github.ref_name }}" --json body --jq .body > existing-notes.md
-          {
-            printf '\n---\n\n## Flashing\n\n'
-            printf 'Firmware binaries are attached to the release as\n'
-            printf '`TC-WL-{HDMI,LTC,CLAP}_{firmware,bootloader,partitions}.bin`.\n\n'
-            printf '### TC-WL-HDMI (ESP32-P4-WIFI6 — HDMI receiver + BLE server)\n'
-            printf '```\nesptool.py --chip esp32p4 --port /dev/ttyUSB0 write_flash \\\n'
-            printf '  0x0 TC-WL-HDMI_bootloader.bin \\\n'
-            printf '  0x8000 TC-WL-HDMI_partitions.bin \\\n'
-            printf '  0x10000 TC-WL-HDMI_firmware.bin\n```\n\n'
-            printf '### TC-WL-LTC (ESP32-C3 — dual-role master/slave)\n'
-            printf 'The app connects to the master via BLE and displays timecode;\n'
-            printf 'use **Settings → Device Mode** to switch between Slave and Master.\n'
-            printf '```\nesptool.py --chip esp32c3 --port /dev/ttyUSB0 write_flash \\\n'
-            printf '  0x0 TC-WL-LTC_bootloader.bin \\\n'
-            printf '  0x8000 TC-WL-LTC_partitions.bin \\\n'
-            printf '  0x10000 TC-WL-LTC_firmware.bin\n```\n\n'
-            printf '### TC-WL-CLAP (ESP32-C3 — BLE client, LED matrix only)\n'
-            printf '```\nesptool.py --chip esp32c3 --port /dev/ttyUSB0 write_flash \\\n'
-            printf '  0x0 TC-WL-CLAP_bootloader.bin \\\n'
-            printf '  0x8000 TC-WL-CLAP_partitions.bin \\\n'
-            printf '  0x10000 TC-WL-CLAP_firmware.bin\n```\n\n'
-            printf '### Android app\n'
-            printf 'Download `TC-WL.apk` and sideload it on your phone.\n\n'
-            printf '---\n'
-            printf 'Replace `/dev/ttyUSB0` with your port (e.g. `COM3` on Windows, `/dev/cu.usbmodem*` on macOS).\n'
-          } >> existing-notes.md
+          cat >> existing-notes.md << 'EOF'
+
+          ---
+
+          ## Flashing
+
+          Firmware binaries are attached to the release as
+          `TC-WL-{HDMI,LTC,CLAP}_{firmware,bootloader,partitions}.bin`.
+
+          ### TC-WL-HDMI (ESP32-P4-WIFI6 — HDMI receiver + BLE server)
+          ```
+          esptool.py --chip esp32p4 --port /dev/ttyUSB0 write_flash \
+            0x0 TC-WL-HDMI_bootloader.bin \
+            0x8000 TC-WL-HDMI_partitions.bin \
+            0x10000 TC-WL-HDMI_firmware.bin
+          ```
+
+          ### TC-WL-LTC (ESP32-C3 — dual-role master/slave)
+          The app connects to the master via BLE and displays timecode;
+          use **Settings → Device Mode** to switch between Slave and Master.
+          ```
+          esptool.py --chip esp32c3 --port /dev/ttyUSB0 write_flash \
+            0x0 TC-WL-LTC_bootloader.bin \
+            0x8000 TC-WL-LTC_partitions.bin \
+            0x10000 TC-WL-LTC_firmware.bin
+          ```
+
+          ### TC-WL-CLAP (ESP32-C3 — BLE client, LED matrix only)
+          ```
+          esptool.py --chip esp32c3 --port /dev/ttyUSB0 write_flash \
+            0x0 TC-WL-CLAP_bootloader.bin \
+            0x8000 TC-WL-CLAP_partitions.bin \
+            0x10000 TC-WL-CLAP_firmware.bin
+          ```
+
+          ### Android app
+          Download `TC-WL.apk` and sideload it on your phone.
+
+          ---
+          Replace `/dev/ttyUSB0` with your port (e.g. `COM3` on Windows, `/dev/cu.usbmodem*` on macOS).
+          EOF
           gh release edit "${{ github.ref_name }}" --notes-file existing-notes.md
         env:
           GH_TOKEN: ${{ github.token }}
