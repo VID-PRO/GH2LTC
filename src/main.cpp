@@ -474,6 +474,9 @@ static void menuBuildItems() {
 #if BAT_ADC_PIN >= 0
 static void initBatteryAdc() {
     analogReadResolution(12);
+    // Force ADC pin init (analogSetPinAttenuation requires the pin to be
+    // registered with periman first; analogRead auto-registers it).
+    analogRead(BAT_ADC_PIN);
     analogSetPinAttenuation(BAT_ADC_PIN, ADC_11db);
 }
 static uint8_t readBatteryPct() {
@@ -482,6 +485,7 @@ static uint8_t readBatteryPct() {
     unsigned long now = millis();
     if (now - lastRead > 10000) {
         lastRead = now;
+        analogRead(BAT_ADC_PIN);
         analogSetPinAttenuation(BAT_ADC_PIN, ADC_11db);
         delay(1);
         int raw = analogRead(BAT_ADC_PIN);
