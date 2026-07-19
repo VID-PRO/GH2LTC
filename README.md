@@ -182,9 +182,9 @@ The 128×64 SSD1306 display is organized in three fixed zones (HDMI, LTC, and CL
 
 ```
 ┌─ Top line (8×13 font) ────────────────────────┐
-│ B ≡ Device Name (centered)    [||||] 10h      │
-│ ble    wifi icon              battery  runtime│
-│ icon                                          │
+│ B ≡ Device Name (centered)         [||||] 10h │
+│ ble  wifi                      battery runtime│
+│ icon icon                                     │
 ├─ Timecode (logisoso18, centered) ─────────────┤
 │                  88:88:88:88                  │
 ├─ Bottom line (6×10, 5 bordered boxes) ────────┤
