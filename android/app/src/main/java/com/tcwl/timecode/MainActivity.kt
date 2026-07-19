@@ -240,6 +240,14 @@ fun ConfigDrawer(
     var brightness by remember { mutableStateOf(7) }
     var deviceName by remember { mutableStateOf(connectedName) }
     LaunchedEffect(connectedName) { deviceName = connectedName }
+    LaunchedEffect(connectionState) {
+        if (connectionState == ConnectionState.DISCONNECTED) {
+            selectedFps = 25
+            dropFrame = false
+            brightness = 7
+            deviceName = connectedName
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -304,6 +312,8 @@ fun ConfigDrawer(
             }
         }
 
+        // Show config items only when connected
+        if (connectionState == ConnectionState.CONNECTED) {
         Divider(modifier = Modifier.padding(vertical = 16.dp))
 
         // FPS
@@ -424,6 +434,8 @@ fun ConfigDrawer(
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Restart Device")
+        }
+
         }
 
         Spacer(Modifier.height(16.dp))
