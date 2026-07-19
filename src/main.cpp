@@ -454,7 +454,7 @@ static void menuBuildItems() {
     menu.addItem("DropFr",    menuGetDf,     menuToggleDf);
     menu.addItem("FPS Mode",  menuGetAutoFps,menuToggleAutoFps);
     menu.addItem("Mode",      menuGetMode,   menuToggleMode);
-    menu.addItem("Role",      menuGetRole,   menuCycleRole);
+    menu.addItem("LTC Role",  menuGetRole,   menuCycleRole);
     menu.addItem("LTC Out",   menuGetLtcOut, menuToggleLtcOut);
     menu.addItem("WiFi",      menuGetWifi,   menuToggleWifi);
     menu.addItem("OLED",      menuGetOled,   menuToggleOled);
