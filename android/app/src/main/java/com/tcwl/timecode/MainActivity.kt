@@ -12,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -198,11 +199,14 @@ fun MainScreen(bleManager: BleManager) {
 
 @Composable
 fun TimecodeDisplay(timecode: Timecode, deviceName: String = "TC-WL", modifier: Modifier = Modifier) {
-    Box(
+    val isLtcDevice = deviceName.contains("LTC", ignoreCase = true)
+    BoxWithConstraints(
         modifier = modifier
             .background(Color(0xFF121212))
             .padding(8.dp),
     ) {
+        val tcFontSize = (maxWidth.value / 6.5f).coerceIn(32f, 80f).sp
+
         Column(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.SpaceBetween
@@ -212,13 +216,10 @@ fun TimecodeDisplay(timecode: Timecode, deviceName: String = "TC-WL", modifier: 
                 modifier = Modifier.fillMaxWidth().height(20.dp).padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // BLE indicator
                 Text("B", color = Color(0xFF00BCD4), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
                 Spacer(Modifier.width(4.dp))
-                // Wi-Fi icon (placeholder)
                 Text("≡", color = Color(0xFF888888), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
                 Spacer(Modifier.width(4.dp))
-                // Device name — centered in remaining space
                 Text(
                     deviceName,
                     color = Color(0xFFCCCCCC),
@@ -227,7 +228,6 @@ fun TimecodeDisplay(timecode: Timecode, deviceName: String = "TC-WL", modifier: 
                     modifier = Modifier.weight(1f),
                     textAlign = TextAlign.Center,
                 )
-                // Battery icon (text-based)
                 Text("[", color = Color(0xFF888888), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
                 val batFill = if (timecode.batteryPct <= 100) (timecode.batteryPct * 5 / 100) else 0
                 Text("▓".repeat(batFill.coerceIn(0, 5)).padEnd(5, '░'), color = Color(0xFF4CAF50), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
@@ -253,7 +253,7 @@ fun TimecodeDisplay(timecode: Timecode, deviceName: String = "TC-WL", modifier: 
                 Text(
                     text = timecode.display,
                     color = Color(0xFF00FF88),
-                    fontSize = 72.sp,
+                    fontSize = tcFontSize,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
                     textAlign = TextAlign.Center,
@@ -263,15 +263,23 @@ fun TimecodeDisplay(timecode: Timecode, deviceName: String = "TC-WL", modifier: 
 
             // ══ Bottom boxes ══
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
+                modifier = Modifier.align(Alignment.CenterHorizontally).padding(horizontal = 4.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                OledBox(text = if (timecode.isMaster) "M" else "S", color = Color(0xFF00BCD4), width = 32)
-                OledBox(text = timecode.lockChar.toString(), color = Color(0xFFFFAA00), width = 32)
-                OledBox(text = if (timecode.autoFps) "A" else "M", color = Color(0xFFAA66FF), width = 32)
-                OledBox(text = if (timecode.fps > 0) timecode.fps.toString() else "--", color = Color(0xFF88CCFF), width = 52)
-                OledBox(text = timecode.ltcModeText, color = Color(0xFF66DDFF), width = 32)
+                val roleText = if (timecode.isMaster) "MASTER" else "SLAVE"
+                OledBox(text = roleText, color = Color(0xFF00BCD4), width = 72)
+                val lockText = when (timecode.lockState) {
+                    0 -> "FREE"
+                    1 -> if (isLtcDevice) "LTC" else "HDMI"
+                    2 -> "RTC"
+                    3 -> "BLE"
+                    else -> "?"
+                }
+                OledBox(text = lockText, color = Color(0xFFFFAA00), width = 52)
+                OledBox(text = if (timecode.autoFps) "A" else "M", color = Color(0xFFAA66FF), width = 28)
+                OledBox(text = if (timecode.fps > 0) "${timecode.fps}fps" else "--", color = Color(0xFF88CCFF), width = 56)
+                OledBox(text = "LTC-${timecode.ltcModeText}", color = Color(0xFF66DDFF), width = 56)
             }
         }
     }
