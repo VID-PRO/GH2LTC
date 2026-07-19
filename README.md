@@ -238,12 +238,12 @@ A 4-button menu (UP/DOWN/OK/CANCEL) overlays the main screen when any button is 
 
 ```
  SETTINGS
- >FPS           25
+ >FPS         25
  DropFr      Off
  FPS Mode   Auto
  LTC Out      On
- WiFi          On
- OLED          On
+ WiFi         On
+ OLED         On
  Exit
 ```
 
