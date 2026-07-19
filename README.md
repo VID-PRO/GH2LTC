@@ -61,7 +61,7 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 | **MAX7219 CLK** | — | — | GPIO 10 |
 | **LTC output** | GPIO 6 | GPIO 6 | GPIO 6 |
 | **LTC input (master)** | — | GPIO 7 | — |
-| **Battery ADC (LiPo)** | GPIO 20 (ADC1_CH4)² | GPIO 0 (A0) | — |
+| **Battery ADC (LiPo)** | GPIO 20 (ADC1_CH4)² | GPIO 0 (A0) | GPIO 0 (A0) |
 | **Button UP** | GPIO 10 | GPIO 8 | — |
 | **Button DOWN** | GPIO 9 | GPIO 9 | — |
 | **Button OK** | GPIO 2 | GPIO 2 | — |
@@ -158,8 +158,8 @@ Open `http://192.168.4.1` (AP mode) or the ESP's STA IP. The header displays a c
 | Setting | HDMI (BLE server, no matrix) | LTC (dual-role master/slave, no HDMI) | CLAP (LED matrix + OLED) |
 |---------|------------------------------|----------------------------|---------------------------|
 | **WiFi AP SSID** | `TC-WL-HDMI-` + last 4 MAC digits | `TC-WL-LTC-` + last 4 MAC digits | `TC-WL-CLAP-` + last 4 MAC digits |
-| **Battery ADC** | GPIO 4 (`BAT_ADC_PIN = 4`) | GPIO 0 (`BAT_ADC_PIN = 0`) | Disabled |
-| **Battery runtime** | `BAT_FULL_RUNTIME_MIN = 600` (10 h) | `BAT_FULL_RUNTIME_MIN = 600` (10 h) | N/A |
+| **Battery ADC** | GPIO 20 (`BAT_ADC_PIN = 20`) | GPIO 0 (`BAT_ADC_PIN = 0`) | GPIO 0 (`BAT_ADC_PIN = 0`) |
+| **Battery runtime** | `BAT_FULL_RUNTIME_MIN = 600` (10 h) | `BAT_FULL_RUNTIME_MIN = 600` (10 h) | `BAT_FULL_RUNTIME_MIN = 600` (10 h) |
 | FPS | Auto (re-detect) | Auto (re-detect†) | Auto (re-detect†) |
 | Drop frame | Off | Off | Off |
 | RTC | Optional (DS3231) | Optional (DS3231) | Optional (DS3231) |
@@ -186,7 +186,7 @@ The 128×64 SSD1306 display is organized in three fixed zones (HDMI, LTC, and CL
 ```
 ┌─ Top line (8×13 font) ──────────────────────────────┐
 │ B ≡ Device Name (centered)          [||||] 10h      │
-│ ble    wifi icon                     battery  runtime│
+│ ble    wifi icon                    battery  runtime│
 │ icon                                                │
 ├─ Timecode (logisoso18, centered) ───────────────────┤
 │                    88:88:88:88                      │
@@ -258,7 +258,7 @@ A 4-button menu (UP/DOWN/OK/CANCEL) overlays the main screen when any button is 
 
 ## Battery Monitoring
 
-TC-WL-HDMI and TC-WL-LTC support single-cell LiPo monitoring via a voltage divider on the ADC pin (CLAP has no battery ADC):
+All three variants support single-cell LiPo monitoring via a voltage divider on the ADC pin:
 - **TC-WL-HDMI:** GPIO 4
 - **TC-WL-LTC:** GPIO 0 (A0)
 
