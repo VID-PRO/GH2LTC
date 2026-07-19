@@ -81,6 +81,7 @@ void WebUI::begin(const char *apSsid, const char *apPassword,
     _matrixEnabled = _prefs.getBool("matrix_en", MATRIX_ENABLED_DEFAULT);
     _oledEnabled = _prefs.getBool("oled_en", true);
     _ltcEnabled = _prefs.getBool("ltc_en", true);
+    _autoFps = _prefs.getBool("auto_fps", true);
     _prefs.end();
     if (_brightnessCb) _brightnessCb(_brightness);
     if (_wifiCb) _wifiCb(_wifiEnabled);
@@ -595,6 +596,17 @@ void WebUI::handleNotFound() {
 // -----------------------------------------------------------------------
 // OLED / LTC / Matrix / Brightness setters (used by OLED menu)
 // -----------------------------------------------------------------------
+void WebUI::setAutoFps(bool en) {
+    _autoFps = en;
+    _prefs.begin("webui", false);
+    _prefs.putBool("auto_fps", en);
+    _prefs.end();
+    if (en) {
+        // reset to 25fps when switching to auto; detection will override
+        if (_fpsCb) _fpsCb(25, _dropFrame);
+    }
+}
+
 void WebUI::setOledEnabled(bool en) {
     _oledEnabled = en;
     _prefs.begin("webui", false);

@@ -42,6 +42,7 @@ public:
     uint8_t brightness() const { return _brightness; }
     bool autoFps() const { return _autoFps; }
 
+    void setAutoFps(bool en);
     void setOledEnabled(bool en);
     void setLtcEnabled(bool en);
     void setWifiEnabled(bool en);

@@ -411,6 +411,8 @@ static const char* menuGetDf() {
 static void menuToggleDf() {
     menuSaveFps(ltc.fps(), !ltc.dropFrame());
 }
+static const char* menuGetAutoFps() { return webui.autoFps() ? "Auto" : "Man"; }
+static void menuToggleAutoFps() { webui.setAutoFps(!webui.autoFps()); }
 static const char* menuGetLtcOut() { return webui.ltcEnabled() ? "On" : "Off"; }
 static const char* menuGetOled()   { return webui.oledEnabled() ? "On" : "Off"; }
 static const char* menuGetWifi()   { return webui.wifiEnabled() ? "On" : "Off"; }
@@ -450,6 +452,7 @@ static void menuBuildItems() {
     menu.clear();
     menu.addItem("FPS",       menuGetFps,    menuCycleFps);
     menu.addItem("DropFr",    menuGetDf,     menuToggleDf);
+    menu.addItem("FPS Mode",  menuGetAutoFps,menuToggleAutoFps);
     menu.addItem("Mode",      menuGetMode,   menuToggleMode);
     menu.addItem("Role",      menuGetRole,   menuCycleRole);
     menu.addItem("LTC Out",   menuGetLtcOut, menuToggleLtcOut);
@@ -467,6 +470,7 @@ static void menuBuildItems() {
     menu.clear();
     menu.addItem("FPS",       menuGetFps,    menuCycleFps);
     menu.addItem("DropFr",    menuGetDf,     menuToggleDf);
+    menu.addItem("FPS Mode",  menuGetAutoFps,menuToggleAutoFps);
     menu.addItem("LTC Out",   menuGetLtcOut, menuToggleLtcOut);
     menu.addItem("WiFi",      menuGetWifi,   menuToggleWifi);
     menu.addItem("OLED",      menuGetOled,   menuToggleOled);

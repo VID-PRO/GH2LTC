@@ -208,8 +208,9 @@ A 4-button menu (UP/DOWN/OK/CANCEL) overlays the main screen when any button is 
 ```
  SETTINGS
 >FPS         25
- DropFr      Off
- Mode     Slave
+  DropFr      Off
+  FPS Mode   Man
+  Mode     Slave
  Role        IN
  LTC Out     On
  WiFi        On
@@ -223,6 +224,7 @@ A 4-button menu (UP/DOWN/OK/CANCEL) overlays the main screen when any button is 
 |------|--------|--------|
 | **FPS** | 24, 25, 30, 50, 60 | Cycles FPS; saved to NVS |
 | **DropFr** | On / Off | Toggles drop frame |
+| **FPS Mode** | Auto / Man | Toggles between auto-detect and manual FPS |
 | **Mode** | Master / Slave | Toggles BLE role; †restarts |
 | **Role** | IN / OUT / BOTH | Decode / Generate / Both; †restarts |
 | **LTC Out** | On / Off | Enables/disables LTC output |
@@ -237,8 +239,9 @@ A 4-button menu (UP/DOWN/OK/CANCEL) overlays the main screen when any button is 
 ```
  SETTINGS
 >FPS         25
- DropFr      Off
- LTC Out     On
+  DropFr      Off
+  FPS Mode   Auto
+  LTC Out     On
  WiFi        On
  OLED        On
  Exit
@@ -248,6 +251,7 @@ A 4-button menu (UP/DOWN/OK/CANCEL) overlays the main screen when any button is 
 |------|--------|--------|
 | **FPS** | 24, 25, 30, 50, 60 | Cycles FPS |
 | **DropFr** | On / Off | Toggles drop frame |
+| **FPS Mode** | Auto / Man | Toggles between auto-detect and manual FPS |
 | **LTC Out** | On / Off | Enables/disables LTC output |
 | **WiFi** | On / Off | Toggles WiFi radio |
 | **OLED** | On / Off | Toggles display |
