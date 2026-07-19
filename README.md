@@ -179,6 +179,7 @@ Open `http://192.168.4.1` (AP mode) or the ESP's STA IP. The header displays a c
 
 The 128×64 SSD1306 display is organized in three fixed zones (HDMI, LTC, and CLAP builds):
 
+
 ```
 ┌─ Top line (8×13 font) ──────────────────────────────┐
 │ B ≡ Device Name (centered)          [||||] 10h      │
@@ -189,7 +190,7 @@ The 128×64 SSD1306 display is organized in three fixed zones (HDMI, LTC, and CL
 ├─ Bottom line (6×10, 5 bordered boxes) ──────────────┤
 │ [MASTER] [H] [A] [25fps] [LTC-O]                    │
 │    └─ role  └─ lock  └─ FPS  └─ FPS    └─ LTC       │
-│                state       mode     rate    mode    │
+│                state    mode    rate      mode      │
 └─────────────────────────────────────────────────────┘
 ```
 
