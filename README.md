@@ -207,8 +207,8 @@ A 4-button menu (UP/DOWN/OK/CANCEL) overlays the main screen when any button is 
 
 ```
  SETTINGS
- >FPS         25
- DropFr      Off
+ >FPS        25
+ DropFr     Off
  FPS Mode   Man
  Mode     Slave
  LTC Role    IN
