@@ -181,20 +181,20 @@ The 128×64 SSD1306 display is organized in three fixed zones (HDMI, LTC, and CL
 
 
 ```
-┌─ Top line (8×13 font) ──────────────────────────────┐
-│ B ≡ Device Name (centered)          [||||] 10h      │
-│ ble    wifi icon                    battery  runtime│
-│ icon                                                │
-├─ Timecode (logisoso18, centered) ───────────────────┤
-│                    88:88:88:88                      │
-├─ Bottom line (6×10, 5 bordered boxes) ──────────────┤
-│ [MASTER] [H] [A] [25fps] [LTC-O]                    │
-│    └─ role  └─ lock  └─ FPS  └─ FPS    └─ LTC       │
-│                state    mode    rate      mode      │
-└─────────────────────────────────────────────────────┘
+┌─ Top line (8×13 font) ────────────────────────┐
+│ B ≡ Device Name (centered)    [||||] 10h      │
+│ ble    wifi icon              battery  runtime│
+│ icon                                          │
+├─ Timecode (logisoso18, centered) ─────────────┤
+│                  88:88:88:88                  │
+├─ Bottom line (6×10, 5 bordered boxes) ────────┤
+│ [M] [H] [A] [25fps] [LTC-O]                   │
+│  └─ role  └─ lock  └─ FPS  └─ FPS    └─ LTC   │
+│              state    mode    rate      mode  │
+└───────────────────────────────────────────────┘
 ```
 
-* **Box 1 (68 px):** `MASTER` or `SLAVE`
+* **Box 1 (68 px):** `M` (Master) or `S` (Slave)
 * **Box 2 (28 px):** `H` (HDMI locked), `L` (LTC input locked), `B` (BLE synced), `R` (RTC free-run), `F` (free-run, no RTC)
 * **Box 3 (28 px):** `A` (auto FPS) or `M` (manual FPS)
 * **Box 4 (56 px):** Framerate — `24fps`, `25fps`, `30fps`, `50fps`, `60fps`
