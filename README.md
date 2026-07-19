@@ -79,10 +79,12 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 |-----|-------|------|-----|----------|
 | `TC-WL-LTC` | Seeed Studio XIAO ESP32-C3 | Dual-role: master (BLE server + LTC input) or slave (BLE client + LTC output), OLED + RTC, physical buttons, OLED menu; MAX7219 matrix not supported (GPIO conflict with buttons) | ✓ (native C3) | `pioarduino/platform-espressif32`† |
 | `TC-WL-CLAP` | ESP32-C3 Super Mini | BLE client, LED matrix + OLED, no physical buttons | ✓ (native C3) | `pioarduino/platform-espressif32`† |
-| `TC-WL-HDMI` | ESP32-P4-WIFI6 | HDMI receiver, BLE server, physical buttons + OLED menu | via C6 coprocessor‡ (ESP-Hosted SDIO) | `pioarduino/platform-espressif32`† |
+| `TC-WL-HDMI` | ESP32-P4-WIFI6 | HDMI receiver, BLE server (multi-connection), physical buttons + OLED menu | via C6 coprocessor‡ (ESP-Hosted SDIO) | `pioarduino/platform-espressif32`† |
 
 † Pinned to GitHub: `https://github.com/pioarduino/platform-espressif32.git` (needed for ESP32-P4 `esp_timer` API compatibility; also used by LTC/CLAP for consistency)
 ‡ ESP32-P4 has no native BLE controller. The Waveshare board's ESP32-C6 companion provides WiFi/BLE over SDIO via ESP-Hosted firmware (pre-flashed). All BLE code uses preprocessor guards (`SOC_BLE_SUPPORTED \|\| CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE`) to compile correctly on P4.
+
+> **⚠️ NimBLE `reset()` bug**: The Arduino BLE library's NimBLE `reset()` omitted `m_advParams.channel_map` (defaulted to 0 = no advertising channels). This caused the C6 to never transmit ADV_IND frames — the device was connectable via direct CONNECT_IND (LTC worked) but invisible to BLE scanners. Fixed by patching the installed library at `BLEAdvertising.cpp:1459` to set `channel_map = 0x07`. A second fix restarts advertising after each connection so the Android app can discover the HDMI even while the LTC is connected.
 
 ### Building
 
@@ -293,7 +295,7 @@ Timecode notification bytes:
 | 7 | flags | Bit0=autoFps, Bit1=isMaster, Bits2-3=LTC mode (0=OUT,1=IN,2=BOTH) |
 | 8 | batteryPct | Battery percentage (0–100) |
 
-- **HDMI**: advertises the service, sends a notification on every frame tick via `bleTimecodeUpdate()`. Broadcast name configurable via web UI; disconnect button removes all connected clients.
+- **HDMI**: advertises the service, sends a notification on every frame tick via `bleTimecodeUpdate()`. Broadcast name configurable via web UI; disconnect button removes all connected clients. Supports multiple simultaneous BLE connections (e.g. LTC + Android app). Advertising restarts after each connection — the device remains discoverable while connected.
 - **TC-WL-LTC (master)**: same BLE server role as HDMI — receives LTC audio via GPIO 7 decoder, advertises timecode over BLE. No HDMI hardware needed; can act as a standalone LTC-to-BLE bridge for slave units.
 - **LTC (slave)**: scans for devices offering the service, connects, receives timecode. Also advertises its own BLE server with the config characteristic (`9a6f0004`) — the Android app can connect and send config commands (FPS, jam, mode, brightness, etc.) even while the slave is synced to a master. OLED shows a 'B' icon in the top line when the Android app is connected.
 - **CLAP**: BLE client only — scans, connects, subscribes to timecode notifications. No server advertising.

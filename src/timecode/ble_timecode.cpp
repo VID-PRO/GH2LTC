@@ -12,6 +12,10 @@
 #include <cstring>
 #include <vector>
 #include <algorithm>
+#if defined(CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE)
+#include "esp32-hal-hosted.h">
+extern "C" void hci_drv_init(void);
+#endif
 
 static Preferences blePrefs;
 static const char *NVS_NS = "ble";
@@ -61,9 +65,6 @@ class ServerCallbacks : public BLEServerCallbacks {
         deviceConnected = true;
     }
     void onDisconnect(BLEServer *pServer) override {
-        deviceConnected = false;
-        peers.clear();
-        BLEDevice::getAdvertising()->start();
     }
 
 #if defined(CONFIG_BLUEDROID_ENABLED)
@@ -100,6 +101,7 @@ class ServerCallbacks : public BLEServerCallbacks {
         pi.name[0] = '\0';
         pi.connId = desc->conn_handle;
         peers.push_back(pi);
+        BLEDevice::getAdvertising()->start();
     }
     void onDisconnect(BLEServer *pServer, ble_gap_conn_desc *desc) override {
         uint16_t cid = desc->conn_handle;
@@ -204,6 +206,91 @@ uint8_t bleTimecodeGetPeers(BlePeerInfo *out, uint8_t maxPeers) {
     return count;
 }
 
+#if defined(CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE) && defined(TCWL_HDMI)
+#include <WiFi.h>
+static bool updateC6Firmware(const char *host, uint16_t port, const char *path) {
+    if (!hostedIsInitialized()) {
+        Serial.println("[C6] ESP-Hosted not initialized");
+        return false;
+    }
+    Serial.printf("[C6] Connecting to %s:%u%s\n", host, port, path);
+    WiFiClient client;
+    if (!client.connect(host, port)) {
+        Serial.println("[C6] connect failed");
+        return false;
+    }
+    client.printf("GET %s HTTP/1.0\r\nHost: %s:%u\r\n\r\n", path, host, port);
+    unsigned long deadline = millis() + 5000;
+    String header;
+    while (header.indexOf("\r\n\r\n") < 0 && millis() < deadline) {
+        if (client.available()) {
+            char c = client.read();
+            header += c;
+        }
+    }
+    if (header.indexOf("\r\n\r\n") < 0) {
+        Serial.println("[C6] No HTTP response headers");
+        client.stop();
+        return false;
+    }
+    int totalLen = 0;
+    int idx = header.indexOf("Content-Length:");
+    if (idx >= 0) {
+        totalLen = atoi(header.c_str() + idx + 15);
+    }
+    if (header.indexOf("200 OK") < 0) {
+        Serial.printf("[C6] HTTP error: %s\n", header.c_str());
+        client.stop();
+        return false;
+    }
+    if (totalLen <= 0) {
+        Serial.printf("[C6] Invalid Content-Length: %d\n", totalLen);
+        client.stop();
+        return false;
+    }
+    Serial.printf("[C6] Firmware size: %d bytes\n", totalLen);
+    if (!hostedBeginUpdate()) {
+        Serial.println("[C6] hostedBeginUpdate failed");
+        client.stop();
+        return false;
+    }
+    uint8_t buf[2048];
+    int downloaded = 0;
+    while (client.connected() && downloaded < totalLen) {
+        size_t avail = client.available();
+        if (avail > 0) {
+            size_t toRead = (avail > sizeof(buf)) ? sizeof(buf) : avail;
+            if ((size_t)(totalLen - downloaded) < toRead) toRead = totalLen - downloaded;
+            int readLen = client.readBytes(buf, toRead);
+            if (readLen > 0) {
+                if (!hostedWriteUpdate(buf, readLen)) {
+                    Serial.println("\n[C6] hostedWriteUpdate failed");
+                    client.stop();
+                    return false;
+                }
+                downloaded += readLen;
+                Serial.print(".");
+            }
+        }
+    }
+    Serial.println();
+    client.stop();
+    if (downloaded < totalLen) {
+        Serial.printf("[C6] Incomplete: %d/%d\n", downloaded, totalLen);
+        return false;
+    }
+    if (!hostedEndUpdate()) {
+        Serial.println("[C6] hostedEndUpdate failed");
+        return false;
+    }
+    Serial.println("[C6] Update complete, activating...");
+    hostedActivateUpdate();
+    delay(1000);
+    ESP.restart();
+    return true;
+}
+#endif
+
 void bleTimecodeInit() {
     blePrefs.begin(NVS_NS, false);
     String saved = blePrefs.getString("name", "TC-WL-HDMI");
@@ -211,7 +298,37 @@ void bleTimecodeInit() {
     strncpy(bleName, saved.c_str(), sizeof(bleName) - 1);
     bleName[sizeof(bleName) - 1] = '\0';
 
-    BLEDevice::init(bleName);
+#if defined(CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE) && defined(TCWL_HDMI)
+    {
+        uint32_t maj, min, pat;
+        hostedGetSlaveVersion(&maj, &min, &pat);
+        if (maj == 0 && min == 0 && pat == 0) {
+            Serial.println("[C6] Firmware unknown, attempting update...");
+            Serial.println("[C6] Connect your computer to AP WiFi, then start:");
+            Serial.println("[C6]   python3 -m http.server 8080");
+            Serial.println("[C6]   in the directory with esp32c6-v2.12.8.bin");
+            for (int i = 30; i > 0; i--) {
+                Serial.printf("[C6] %d...\n", i);
+                delay(1000);
+            }
+            updateC6Firmware("192.168.4.2", 8080, "/esp32c6-v2.12.8.bin");
+        }
+    }
+    hci_drv_init();
+    Serial.printf("[BLE] hci_drv_init called\n");
+#endif
+
+    bool ok = BLEDevice::init(bleName);
+    Serial.printf("[BLE] init(%s): %s\n", bleName, ok ? "ok" : "FAIL");
+#if defined(CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE)
+    Serial.printf("[BLE] isHostedBLE: %s\n", BLEDevice::isHostedBLE() ? "yes" : "no");
+    {
+        uint32_t maj, min, pat;
+        hostedGetSlaveVersion(&maj, &min, &pat);
+        Serial.printf("[BLE] C6 fw: v%" PRIu32 ".%" PRIu32 ".%" PRIu32 "\n", maj, min, pat);
+    }
+#endif
+
     server = BLEDevice::createServer();
     server->setCallbacks(new ServerCallbacks());
 
@@ -239,21 +356,12 @@ void bleTimecodeInit() {
 
     svc->start();
 
-    // Build advertising data explicitly so the 128‑bit service UUID always
-    // appears in the advertising packet, not only in the scan response.
-    // (Arduino‑ESP32 drops the UUID from the adv packet when the device
-    // name exceeds ~5 chars, which breaks Android ScanFilter.setServiceUuid.)
     BLEAdvertising *adv = BLEDevice::getAdvertising();
-    BLEAdvertisementData advData;
-    advData.setFlags(0x06);
-    advData.setCompleteServices(bleTimecodeServiceUUID);
-    BLEAdvertisementData scanData;
-    scanData.setName(bleName);
-    adv->setAdvertisementData(advData);
-    adv->setScanResponseData(scanData);
-    adv->setMinPreferred(0x06);
-    adv->setMaxPreferred(0x12);
+    adv->addServiceUUID(bleTimecodeServiceUUID);
+    adv->setScanResponse(true);
+    Serial.println("[BLE] channel_map=0x07 (fixed in NimBLE reset)");
     BLEDevice::startAdvertising();
+    Serial.printf("[BLE] startAdvertising called\n");
 }
 
 void bleTimecodeUpdate(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff, uint8_t lockState, uint8_t fps, uint8_t flags, uint8_t batteryPct) {
@@ -529,13 +637,8 @@ void bleTimecodeInit() {
     svc->start();
 
     BLEAdvertising *adv = BLEDevice::getAdvertising();
-    BLEAdvertisementData advData;
-    advData.setFlags(0x06);
-    advData.setCompleteServices(bleTimecodeServiceUUID);
-    BLEAdvertisementData scanData;
-    scanData.setName(ltcServerName);
-    adv->setAdvertisementData(advData);
-    adv->setScanResponseData(scanData);
+    adv->addServiceUUID(bleTimecodeServiceUUID);
+    adv->setScanResponse(true);
     adv->setMinPreferred(0x06);
     adv->setMaxPreferred(0x12);
     BLEDevice::startAdvertising();
