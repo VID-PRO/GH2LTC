@@ -365,9 +365,7 @@ The LED matrix may show **all LEDs on** briefly at power-on, especially on low�
 
 **Hardware fix — add a 10 kΩ pull‑up resistor:**
 
-```
-GPIO 3 (MAX7219 CS) ────[ 10kΩ ]──── +3.3V
-```
+![CLAP CS Fix](Pics/CLAP-CS-Fix.jpg)
 
 This holds CS HIGH from the moment power is applied, preventing the MAX7219 from latching any data during boot. A 4.7 kΩ resistor also works. The fix applies to all builds using the MAX7219 matrix (CLAP).
 
@@ -388,48 +386,15 @@ Once HDMI has been acquired at least once (`everLocked=true`), subsequent discon
 
 ### LTC Output
 
-```
-GPIO6 (LTC_OUT_PIN)
-  └───[ R1: 1k ]────┬───[ C2: 1µF ]──┬─── TRS TIP
-                    │                │
-                 [ C1: 4.7nF ]    [ R2: 20k ]
-                    │                │
-                   GND               │
-                                     │
-GND ─────────────────────────────────┴─── TRS SLEEVE
-```
+This circuit is designed to take the digital 3.3V LTC signal from GPIO6 and filter it. The combination of R1, C1, and C2 forms a low-pass filter with DC blocking, outputting an audio-level signal (~1Vpp) compatible with professional audio inputs.
+
+![LTC Output](Pics/LTC-Out.jpg)
 
 ### LTC Input (TC-WL-LTC master mode)
 
-Connect a 3.3V-tolerant LTC source (e.g., another TC-WL's LTC output or a
-professional LTC generator) to GPIO 7.  Because most LTC sources produce
-audio-level signals (±1 Vpp), a simple NPN transistor pre-amplifier is needed
-to convert the signal to clean 0/3.3 V logic for the ESP32-C3 GPIO.
+This circuit is an active pre-amplifier using a single BC547 NPN transistor. It accepts a standard ±1Vpp audio-level LTC signal (from a professional generator), blocks the DC component using C3, and uses the transistor to amplify and clip the signal into a clean 0V to 3.3V logic square wave. This level-shifted signal is safe for and easily read by GPIO7 on the ESP32-C3.
 
-```
-                    +3.3V
-                      │
-                  [R5] 10k
-                      │
-                      ├── GPIO 7
-                      │
-                  C ──┤
-                      │
-    ──────────┬──[C3]── B ────<   BC547 (NPN)
-              │       │
-              │   E ──┤
-              │       │
-              │     GND
-              │
-          [R6] 100k
-              │
-             GND
-              ▲
-              │
-TRS TIP ──────┘  10µF DC block
-
-TRS SLEEVE ────── GND
-```
+![LTC Input](Pics/LTC-In.jpg)
 
 | Part | Value | Purpose |
 |------|-------|---------|
