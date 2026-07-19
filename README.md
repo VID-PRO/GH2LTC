@@ -169,7 +169,7 @@ Open `http://192.168.4.1` (AP mode) or the ESP's STA IP. The header displays a c
 | LTC output pin | GPIO6 | GPIO6 | GPIO6 |
 | LTC input pin (master) | — | GPIO7 | — |
 | Physical buttons + OLED menu | GPIO 10/9/2/3 (UP/DOWN/OK/CANCEL) | GPIO 8/9/2/3 (UP/DOWN/OK/CANCEL) | — |
-| TC_RESET_PIN | `4` | `-1` | — |
+| TC_RESET_PIN | `4` | — | — |
 | Reverse-engineer mode | 0 (set to 1 in `config_tcwl_hdmi.h`) | — | — |
 | BLE role | Server (advertise + notify) | Configurable: master (server + LTC input) or slave (client + LTC output) | Client (scan + subscribe) |
 
