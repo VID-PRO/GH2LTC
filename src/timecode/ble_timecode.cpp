@@ -239,11 +239,20 @@ void bleTimecodeInit() {
 
     svc->start();
 
+    // Build advertising data explicitly so the 128‑bit service UUID always
+    // appears in the advertising packet, not only in the scan response.
+    // (Arduino‑ESP32 drops the UUID from the adv packet when the device
+    // name exceeds ~5 chars, which breaks Android ScanFilter.setServiceUuid.)
     BLEAdvertising *adv = BLEDevice::getAdvertising();
-    adv->addServiceUUID(bleTimecodeServiceUUID);
-    adv->setScanResponse(true);
+    BLEAdvertisementData advData;
+    advData.setFlags(0x06);
+    advData.addServiceUUID(bleTimecodeServiceUUID);
+    BLEAdvertisementData scanData;
+    scanData.setName(bleName);
+    adv->setAdvertisementData(advData);
+    adv->setScanResponseData(scanData);
     adv->setMinPreferred(0x06);
-    adv->setMinPreferred(0x12);
+    adv->setMaxPreferred(0x12);
     BLEDevice::startAdvertising();
 }
 
@@ -520,10 +529,15 @@ void bleTimecodeInit() {
     svc->start();
 
     BLEAdvertising *adv = BLEDevice::getAdvertising();
-    adv->addServiceUUID(bleTimecodeServiceUUID);
-    adv->setScanResponse(true);
+    BLEAdvertisementData advData;
+    advData.setFlags(0x06);
+    advData.addServiceUUID(bleTimecodeServiceUUID);
+    BLEAdvertisementData scanData;
+    scanData.setName(ltcServerName);
+    adv->setAdvertisementData(advData);
+    adv->setScanResponseData(scanData);
     adv->setMinPreferred(0x06);
-    adv->setMinPreferred(0x12);
+    adv->setMaxPreferred(0x12);
     BLEDevice::startAdvertising();
 
     if (bleLtcRole != TCWL_MODE_LTC_MASTER) {
