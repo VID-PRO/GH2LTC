@@ -11,9 +11,9 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 | **HDMI timecode capture** | Decodes GH5 timecode from HDMI Vendor-Specific InfoFrame via TC358743 I2C — no video decoding needed |
 | **LTC generation** | Standalone SMPTE-12M biphase-mark encoder, esp_timer-driven, independent of I2C polling |
 | **Frame rates** | Auto-detected from HDMI (24/25/30/50/60 fps) or manual via web UI |
-| **RTC fallback** | Optional DS3231 preserves accurate time across power cycles with frame interpolation |
+| **RTC fallback** | HDMI uses ESP32-P4 internal RTC (synced by HDMI timecode); LTC/CLAP use optional external DS3231 — both with frame interpolation |
 | **LED matrix (CLAP)** | 8 daisy-chained MAX7219 8×8 modules (64×8 px), software SPI; runtime toggle in web UI; not available on HDMI or LTC (GPIO conflict with buttons) |
-| **OLED display (optional)** | 128×64 SSD1306 on shared I2C bus: device name, battery gauge + runtime, big timecode, master/`F`/lock/`B` indicator, FPS mode/rate, LTC mode — controlled via 4 physical buttons on HDMI/LTC; CLAP shows main screen only (no buttons) |
+| **OLED display (optional)** | 128×64 SSD1306 on shared I2C bus: device name, battery gauge + runtime, big timecode, 5 bottom boxes (MASTER/SLAVE, lock state, A/M, fps, LTC mode) — controlled via 4 physical buttons on HDMI/LTC; CLAP main screen only (no buttons) |
 | **Web UI** | Fullscreen dark-teal SPA: timecode display, Auto/fixed FPS config, jam sync, brightness slider, matrix on/off, WiFi config |
 | **WiFi** | AP on boot; auto-STA connect to saved network; AP re-enables on disconnect |
 | **Reverse-engineer mode** | Dumps InfoFrame packets over serial to find GH5's exact timecode byte layout |
@@ -32,12 +32,10 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 | **Waveshare ESP32-P4-WIFI6** | ESP32-P4 + ESP32-C6 companion for WiFi/BLE | [waveshare.com](https://www.waveshare.com) |
 | **TC358743 HDMI→CSI-2** | e.g. Geekworm C790 — I2C + CSI-2 | widely available |
 | **22-pin to 15-pin CSI ribbon cable** | Connects TC358743 to ESP32-P4-WIFI6 CSI connector | search "22-pin to 15-pin CSI cable" |
-| **DS3231 RTC (optional)** | Battery-backed, I2C, ±2ppm | any electronics supplier |
-| **128×64 OLED SSD1306 (optional)** | I2C, shares bus with TC358743 + RTC | any electronics supplier |
+| **128×64 OLED SSD1306 (optional)** | I2C, shares bus with TC358743 | any electronics supplier |
 | **3.5mm TRS jack** | LTC audio output | any electronics supplier |
 | **R1: 1kΩ, C1: 4.7nF, C2: 1µF** | LTC low-pass + DC block | — |
 | **R3, R4: 10kΩ** | LTC level pad | — |
-| **CR2032 coin cell** | Backup for DS3231 | any electronics supplier |
 #### TC-WL-LTC (Seeed Studio XIAO ESP32-C3)
 
 | Component | Notes |
@@ -55,7 +53,7 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 |----------|----------------------|----------------------|----------------------|
 | **I2C SDA** | GPIO 7 | GPIO 4 | GPIO 4 |
 | **I2C SCL** | GPIO 8 | GPIO 5 | GPIO 5 |
-| **I2C devices** | TC358743 `0x0F`, OLED `0x3C`, DS3231 `0x68` | OLED `0x3C`, DS3231 `0x68` | OLED `0x3C` |
+| **I2C devices** | TC358743 `0x0F`, OLED `0x3C` | OLED `0x3C`, DS3231 `0x68` | OLED `0x3C` |
 | **MAX7219 DIN** | — | — | GPIO 2 |
 | **MAX7219 CS** | — | — | GPIO 3 |
 | **MAX7219 CLK** | — | — | GPIO 10 |
@@ -118,7 +116,7 @@ src/hdmi/                      TC358743 I2C driver + register map + GH5 timecode
 src/ltc/                       esp_timer-based SMPTE-12M LTC generator
 src/matrix/                    MAX7219 64×8 framebuffer driver (CLAP only)
 src/oled/                      optional SSD1306 via U8g2
-src/rtc/                       optional DS3231 RTC driver
+src/rtc/                       DS3231 (external) or InternalRtc (ESP32-P4 POSIX time) RTC driver
 src/timecode/                  BLE HDMI (advertise/notify) & LTC (scan/select/connect/subscribe)
 3DPrints/                     STL/3MF enclosures for TC-WL-HDMI (ESP32-P4) and TC-WL-CLAP (ESP32-C3 + LED matrix)
 ```
@@ -149,7 +147,7 @@ Open `http://192.168.4.1` (AP mode) or the ESP's STA IP. The header displays a c
 | **WiFi config** | SSID/password input, saved to NVS, forget option |
 | **BLE (HDMI)** | Change broadcast name, view connected client count, disconnect all |
 | **BLE (LTC master)** | Same server controls as HDMI (change server name, view/disconnect clients), plus LTC decoder status |
-| **BLE (LTC/CLAP slave)** | Scan for HDMI or LTC-master server devices (name + address), tap to connect, view server name; lock box shows `B` when synced, `F` when not |
+| **BLE (LTC/CLAP slave)** | Scan for HDMI or LTC-master server devices (name + address), tap to connect, view server name; lock box shows `B` (BLE synced), `R` (RTC), or `F` (free) |
 
 ---
 
@@ -162,7 +160,7 @@ Open `http://192.168.4.1` (AP mode) or the ESP's STA IP. The header displays a c
 | **Battery runtime** | `BAT_FULL_RUNTIME_MIN = 600` (10 h) | `BAT_FULL_RUNTIME_MIN = 600` (10 h) | `BAT_FULL_RUNTIME_MIN = 600` (10 h) |
 | FPS | Auto (re-detect) | Auto (re-detect†) | Auto (re-detect†) |
 | Drop frame | Off | Off | Off |
-| RTC | Optional (DS3231) | Optional (DS3231) | Optional (DS3231) |
+| RTC | Internal (ESP32-P4), no external chip needed | Optional (DS3231) | Optional (DS3231) |
 | OLED | Optional (SSD1306) | Optional (SSD1306) | Optional (SSD1306) — main screen only (no buttons) |
 | MAX7219 matrix | Disabled (no hardware) | Disabled (no hardware) | Enabled by default |
 | Matrix brightness | N/A | N/A | 4 |
@@ -190,17 +188,18 @@ The 128×64 SSD1306 display is organized in three fixed zones (HDMI, LTC, and CL
 │ icon                                                │
 ├─ Timecode (logisoso18, centered) ───────────────────┤
 │                    88:88:88:88                      │
-├─ Bottom line (6×10, 4 bordered boxes) ──────────────┤
-│ [H] [A] [25fps] [LTC OUT]                           │
-│  └─ master indicator   └─ FPS mode/rate  └─ LTC     │
-│  or F / R / B / L                                   │
+├─ Bottom line (6×10, 5 bordered boxes) ──────────────┤
+│ [MASTER] [H] [A] [25fps] [LTC-O]                   │
+│    └─ role  └─ lock  └─ FPS  └─ FPS    └─ LTC      │
+│                state       mode     rate    mode    │
 └─────────────────────────────────────────────────────┘
 ```
 
-* **Box 1 (14 px):** `H` (HDMI locked), `L` (LTC input locked), `B` (BLE synced slave), `R` (RTC free-run), `F` (free-run, no RTC)
-* **Box 2 (12 px):** `A` (auto FPS) or `M` (manual FPS)
-* **Box 3 (42 px):** Framerate — `24fps`, `25fps`, `30fps`, `50fps`, `60fps`
-* **Box 4 (50 px):** LTC mode — `LTC OUT` or `LTC IN`
+* **Box 1 (68 px):** `MASTER` or `SLAVE`
+* **Box 2 (28 px):** `H` (HDMI locked), `L` (LTC input locked), `B` (BLE synced), `R` (RTC free-run), `F` (free-run, no RTC)
+* **Box 3 (28 px):** `A` (auto FPS) or `M` (manual FPS)
+* **Box 4 (56 px):** Framerate — `24fps`, `25fps`, `30fps`, `50fps`, `60fps`
+* **Box 5 (56 px):** LTC mode — `LTC-O` (OUT), `LTC-I` (IN), `LTC-B` (BOTH)
 
 ### OLED Menu (HDMI & LTC only)
 
@@ -259,22 +258,37 @@ A 4-button menu (UP/DOWN/OK/CANCEL) overlays the main screen when any button is 
 ## Battery Monitoring
 
 All three variants support single-cell LiPo monitoring via a voltage divider on the ADC pin:
-- **TC-WL-HDMI:** GPIO 4
+- **TC-WL-HDMI:** GPIO 20 (ADC1_CH4)
 - **TC-WL-LTC:** GPIO 0 (A0)
+- **TC-WL-CLAP:** GPIO 0 (A0)
 
 The ADC (12-bit, 11 dB attenuation) is read every 10 s; voltage is converted to 0–100 % over the 3.3–4.2 V range using `BAT_DIVIDER` (default 2.0 f for a 200k:200k divider). Remaining runtime is estimated from `batteryPct × BAT_FULL_RUNTIME_MIN / 100` and displayed as `Xh` (≥1 h) or `Xm` (<1 h) right of the battery icon. Set `BAT_FULL_RUNTIME_MIN` in config to match your battery and load.
 
 ## BLE Wireless Sync
 
-A custom 128-bit BLE service (`9a6f0001-...`) transfers timecode from HDMI to LTC/CLAP as 5-byte notifications (dd, hh, mm, ss, ff):
+A custom 128-bit BLE service (`9a6f0001-...`) transfers timecode from HDMI/LTC to LTC/CLAP as 9-byte notifications:
 
 ### Characteristics
 
 | UUID | Name | Properties | Description |
 |------|------|------------|-------------|
-| `9a6f0002` | Timecode | READ + NOTIFY | 5-byte timecode packet (dd, hh, mm, ss, ff) |
+| `9a6f0002` | Timecode | READ + NOTIFY | 9-byte packet: dd, hh, mm, ss, ff, lockState, fps, flags, batteryPct |
 | `9a6f0003` | Name | WRITE | Peer announces its display name |
 | `9a6f0004` | Config | WRITE | ASCII `cmd:value` commands (FPS, brightness, jam, mode, name, restart, etc.) |
+
+Timecode notification bytes:
+
+| Offset | Field | Description |
+|--------|-------|-------------|
+| 0 | dd | Days (0–99 BCD) |
+| 1 | hh | Hours (0–23 BCD) |
+| 2 | mm | Minutes (0–59 BCD) |
+| 3 | ss | Seconds (0–59 BCD) |
+| 4 | ff | Frames (0–59 BCD) |
+| 5 | lockState | 0=Free, 1=HDMI/LTC locked, 2=RTC, 3=BLE synced |
+| 6 | fps | Frame rate (24, 25, 30, 50, 60) |
+| 7 | flags | Bit0=autoFps, Bit1=isMaster, Bits2-3=LTC mode (0=OUT,1=IN,2=BOTH) |
+| 8 | batteryPct | Battery percentage (0–100) |
 
 - **HDMI**: advertises the service, sends a notification on every frame tick via `bleTimecodeUpdate()`. Broadcast name configurable via web UI; disconnect button removes all connected clients.
 - **TC-WL-LTC (master)**: same BLE server role as HDMI — receives LTC audio via GPIO 7 decoder, advertises timecode over BLE. No HDMI hardware needed; can act as a standalone LTC-to-BLE bridge for slave units.
@@ -306,14 +320,14 @@ Set `REVERSE_ENGINEER_MODE 1` in `src/config_tcwl_hdmi.h`. Connect the GH5 via H
 
 Fill in `decodeGh5Timecode()` in `src/hdmi/panasonic_tc.h` using these offsets, then set `REVERSE_ENGINEER_MODE 0`.
 
-When no HDMI source is detected the system free-runs, generating LTC from its internal timer (or RTC if fitted). It auto-switches between HDMI and free-run as sources are connected/disconnected.
+When no HDMI source is detected the system free-runs, generating LTC from the internal RTC (ESP32-P4 on HDMI) or external DS3231 (LTC/CLAP) if present, otherwise from its internal timer. It auto-switches between HDMI and free-run as sources are connected/disconnected.
 
 ---
 
 ## Time source fallback
 
 1. **HDMI timecode** — directly drives LTC, syncs RTC once per second
-2. **DS3231 RTC** — HH:MM:SS with sub-second frame interpolation via `millis()`
+2. **RTC** — ESP32-P4 internal RTC (HDMI) or DS3231 (LTC/CLAP); HH:MM:SS with sub-second frame interpolation via `millis()`
 3. **Free-running tick** — advances from jam time (01:00:00:00)
 
 ---
@@ -443,8 +457,8 @@ The `android/` directory contains a Kotlin Compose app that connects to TC-WL de
 
 | Feature | Description |
 |---------|-------------|
-| **Timecode display** | Large green monospace timecode, fullscreen, updates via BLE notifications |
-| **BLE connection** | Scan, tap to connect, auto-reconnect |
+| **OLED-like display** | Header bar (BLE icon, device name, battery + runtime), big timecode, 5 bottom boxes (role, lock state, FPS mode, fps rate, LTC mode) |
+| **BLE connection** | Scan, tap to connect, auto-reconnect; shows "TC-WL" header when disconnected |
 | **FPS config** | 24/25/30/50/60, drop-frame toggle — sent over BLE config characteristic |
 | **Jam timecode** | Set dd:hh:mm:ss:ff via BLE |
 | **Device mode (LTC)** | Switch between master and slave mode over BLE (device restarts) |

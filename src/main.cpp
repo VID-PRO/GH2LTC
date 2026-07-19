@@ -11,7 +11,11 @@
 #include "ltc/ltc_decoder.h"
 #include "hdmi/panasonic_tc.h"
 #if RTC_ENABLE
+#if defined(TCWL_USE_INTERNAL_RTC)
+#include "rtc/internal_rtc.h"
+#else
 #include "rtc/ds3231.h"
+#endif
 #endif
 #if OLED_ENABLE
 #include "oled/oled_display.h"
@@ -88,7 +92,11 @@ static OledMenu menu(oled);
 #endif
 
 #if RTC_ENABLE
+#if defined(TCWL_USE_INTERNAL_RTC)
+static InternalRtc rtc;
+#else
 static DS3231 rtc(Wire, RTC_I2C_ADDR);
+#endif
 static bool rtcPresent = false;
 static unsigned long lastRtcReadMs = 0;
 static unsigned long lastRtcSyncMs = 0;

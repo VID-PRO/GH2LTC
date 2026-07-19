@@ -41,9 +41,10 @@
 // TC358743 reference clock crystal on this module is 27 MHz (not 42 MHz)
 #define TC_REFCLK_HZ          27000000u
 
-// RTC disabled on P4 — RTC I2C uses GPIO 4 (SDA) + 5 (SCL), but GPIO 4 is
-// also TC_RESET_PIN (CE).  rtc.begin() toggles GPIO 4 as I2C data, which
-// glitches the CE line and resets the TC358743.  No RTC on this board.
+// Use ESP32-P4 internal RTC instead of external DS3231 — GPIO 4/5 conflict
+// with TC_RESET_PIN (GPIO 4).  Internal RTC is battery-less but keeps time
+// while powered; HDMI timecode syncs it each second.
 #undef RTC_ENABLE
 #define RTC_ENABLE            1
+#define TCWL_USE_INTERNAL_RTC
 
