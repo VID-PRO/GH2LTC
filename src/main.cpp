@@ -999,7 +999,7 @@ static void hdmiLoop() {
         }
         mx7219.setBleConnected(bleTimecodeConnectedCount() > 0);
 #endif
-        bleTimecodeUpdate(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
+        bleTimecodeUpdate(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff(), hdmiOk ? 1 : (rtcPresent ? 2 : 0), ltc.fps(), (webui.autoFps() ? 1 : 0) | (1 << 1) | (0 << 2), readBatteryPct());
 
 #if WEBUI_ENABLE
         fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
@@ -1161,13 +1161,13 @@ static void ltcLoop() {
                 strcpy(tcSource, signalOk ? "LTC-IN" : "FREE");
             }
 
-            bleTimecodeUpdate(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
+            bleTimecodeUpdate(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff(), (decoderActive && ltcDecoder.locked()) ? 1 : (rtcPresent ? 2 : 0), ltc.fps(), (webui.autoFps() ? 1 : 0) | (1 << 1) | (static_cast<uint8_t>(role == MASTER_ROLE_IN ? 1 : (role == MASTER_ROLE_BOTH ? 2 : 0)) << 2), readBatteryPct());
         } else if (role == MASTER_ROLE_IN) {
             // IN mode, encoder off — broadcast BLE periodically
             static unsigned long lastBleBcast = 0;
             if (now - lastBleBcast >= 1000) {
                 lastBleBcast = now;
-                bleTimecodeUpdate(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
+                bleTimecodeUpdate(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff(), (decoderActive && ltcDecoder.locked()) ? 1 : (rtcPresent ? 2 : 0), ltc.fps(), (webui.autoFps() ? 1 : 0) | (1 << 1) | (static_cast<uint8_t>(role == MASTER_ROLE_IN ? 1 : (role == MASTER_ROLE_BOTH ? 2 : 0)) << 2), readBatteryPct());
             }
         }
 
@@ -1225,7 +1225,7 @@ static void ltcLoop() {
             }
         }
 
-        bleTimecodeUpdate(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
+        bleTimecodeUpdate(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff(), bleTimecodeConnected() ? 3 : (rtcPresent ? 2 : 0), ltc.fps(), (webui.autoFps() ? 1 : 0) | (0 << 2), readBatteryPct());
 
 #if OLED_ENABLE
         if (webui.oledEnabled()) {

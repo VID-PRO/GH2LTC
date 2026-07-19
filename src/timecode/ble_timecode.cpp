@@ -247,10 +247,10 @@ void bleTimecodeInit() {
     BLEDevice::startAdvertising();
 }
 
-void bleTimecodeUpdate(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff) {
+void bleTimecodeUpdate(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff, uint8_t lockState, uint8_t fps, uint8_t flags, uint8_t batteryPct) {
     if (!deviceConnected) return;
-    uint8_t data[5] = {dd, hh, mm, ss, ff};
-    tcChar->setValue(data, 5);
+    uint8_t data[9] = {dd, hh, mm, ss, ff, lockState, fps, flags, batteryPct};
+    tcChar->setValue(data, 9);
     tcChar->notify();
 }
 
@@ -683,10 +683,10 @@ const char *bleTimecodeGetName() {
     return ltcBleName;
 }
 
-void bleTimecodeUpdate(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff) {
+void bleTimecodeUpdate(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff, uint8_t lockState, uint8_t fps, uint8_t flags, uint8_t batteryPct) {
     if (!ltcServerHasClients) return;
-    uint8_t data[5] = {dd, hh, mm, ss, ff};
-    ltcTcChar->setValue(data, 5);
+    uint8_t data[9] = {dd, hh, mm, ss, ff, lockState, fps, flags, batteryPct};
+    ltcTcChar->setValue(data, 9);
     ltcTcChar->notify();
 }
 

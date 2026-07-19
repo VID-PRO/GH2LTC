@@ -15,7 +15,7 @@ void bleTimecodeInit() {
     strncpy(bleName, saved.c_str(), sizeof(bleName) - 1);
     bleName[sizeof(bleName) - 1] = '\0';
 }
-void bleTimecodeUpdate(uint8_t, uint8_t, uint8_t, uint8_t, uint8_t) {}
+void bleTimecodeUpdate(uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t) {}
 void bleTimecodeSetName(const char *name) {
     strncpy(bleName, name, sizeof(bleName) - 1);
     bleName[sizeof(bleName) - 1] = '\0';

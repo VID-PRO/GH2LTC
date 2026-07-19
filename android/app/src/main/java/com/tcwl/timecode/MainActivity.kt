@@ -9,6 +9,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -141,7 +142,10 @@ fun MainScreen(bleManager: BleManager) {
             snackbarHost = { SnackbarHost(snackbarHostState) },
             topBar = {
                 TopAppBar(
-                    title = { Text(bleManager.deviceName.collectAsStateWithLifecycle().value) },
+                    title = {
+                    val name = bleManager.deviceName.collectAsStateWithLifecycle().value
+                    Text(if (connectionState == ConnectionState.CONNECTED) name else "TC-WL")
+                },
                     actions = {
                         Text(
                             text = when (connectionState) {
@@ -170,6 +174,8 @@ fun MainScreen(bleManager: BleManager) {
         ) { padding ->
             TimecodeDisplay(
                 timecode = timecode,
+                deviceName = if (connectionState == ConnectionState.CONNECTED)
+                    bleManager.deviceName.collectAsStateWithLifecycle().value else "TC-WL",
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
@@ -191,31 +197,101 @@ fun MainScreen(bleManager: BleManager) {
 }
 
 @Composable
-fun TimecodeDisplay(timecode: Timecode, modifier: Modifier = Modifier) {
+fun TimecodeDisplay(timecode: Timecode, deviceName: String = "TC-WL", modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .background(Color(0xFF121212))
-            .padding(16.dp),
-        contentAlignment = Alignment.Center
+            .padding(8.dp),
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            if (timecode.dd > 0) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            // ══ Top line: BLE + Wi-Fi + name + battery + runtime ══
+            Row(
+                modifier = Modifier.fillMaxWidth().height(20.dp).padding(horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // BLE indicator
+                Text("B", color = Color(0xFF00BCD4), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                Spacer(Modifier.width(4.dp))
+                // Wi-Fi icon (placeholder)
+                Text("≡", color = Color(0xFF888888), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                Spacer(Modifier.width(4.dp))
+                // Device name — centered in remaining space
                 Text(
-                    text = "%02d".format(timecode.dd),
-                    color = Color(0xFF888888),
-                    fontSize = 24.sp,
+                    deviceName,
+                    color = Color(0xFFCCCCCC),
+                    fontSize = 12.sp,
                     fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center,
                 )
-                Spacer(Modifier.height(8.dp))
+                // Battery icon (text-based)
+                Text("[", color = Color(0xFF888888), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                val batFill = if (timecode.batteryPct <= 100) (timecode.batteryPct * 5 / 100) else 0
+                Text("▓".repeat(batFill.coerceIn(0, 5)).padEnd(5, '░'), color = Color(0xFF4CAF50), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                Text("]", color = Color(0xFF888888), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                Spacer(Modifier.width(2.dp))
+                Text(timecode.runtimeText, color = Color(0xFF888888), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
             }
+
+            // ══ Big timecode ══
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                if (timecode.dd > 0) {
+                    Text(
+                        text = "%02d".format(timecode.dd),
+                        color = Color(0xFF888888),
+                        fontSize = 28.sp,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                }
+                Text(
+                    text = timecode.display,
+                    color = Color(0xFF00FF88),
+                    fontSize = 72.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            // ══ Bottom boxes ══
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OledBox(text = if (timecode.isMaster) "M" else "S", color = Color(0xFF00BCD4), width = 32)
+                OledBox(text = timecode.lockChar.toString(), color = Color(0xFFFFAA00), width = 32)
+                OledBox(text = if (timecode.autoFps) "A" else "M", color = Color(0xFFAA66FF), width = 32)
+                OledBox(text = if (timecode.fps > 0) timecode.fps.toString() else "--", color = Color(0xFF88CCFF), width = 52)
+                OledBox(text = timecode.ltcModeText, color = Color(0xFF66DDFF), width = 32)
+            }
+        }
+    }
+}
+
+@Composable
+private fun OledBox(text: String, color: Color, width: Int = 40) {
+    Surface(
+        shape = RoundedCornerShape(4.dp),
+        border = BorderStroke(1.dp, color),
+        color = Color.Transparent,
+        modifier = Modifier.width(width.dp).height(28.dp),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
             Text(
-                text = timecode.display,
-                color = Color(0xFF00FF88),
-                fontSize = 72.sp,
+                text = text,
+                color = color,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
             )
         }
     }

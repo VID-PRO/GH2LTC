@@ -24,7 +24,7 @@ void bleSetMode(int mode);
 void bleTimecodeInit();
 
 // HDMI-mode functions (no-ops in LTC/CLAP mode)
-void bleTimecodeUpdate(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff);
+void bleTimecodeUpdate(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff, uint8_t lockState = 0, uint8_t fps = 0, uint8_t flags = 0, uint8_t batteryPct = 0);
 void bleTimecodeSetName(const char *name);
 const char *bleTimecodeGetName();
 void bleTimecodeDisconnectAll();
