@@ -246,7 +246,7 @@ void bleTimecodeInit() {
     BLEAdvertising *adv = BLEDevice::getAdvertising();
     BLEAdvertisementData advData;
     advData.setFlags(0x06);
-    advData.addServiceUUID(bleTimecodeServiceUUID);
+    advData.setCompleteServices(bleTimecodeServiceUUID);
     BLEAdvertisementData scanData;
     scanData.setName(bleName);
     adv->setAdvertisementData(advData);
@@ -531,7 +531,7 @@ void bleTimecodeInit() {
     BLEAdvertising *adv = BLEDevice::getAdvertising();
     BLEAdvertisementData advData;
     advData.setFlags(0x06);
-    advData.addServiceUUID(bleTimecodeServiceUUID);
+    advData.setCompleteServices(bleTimecodeServiceUUID);
     BLEAdvertisementData scanData;
     scanData.setName(ltcServerName);
     adv->setAdvertisementData(advData);
