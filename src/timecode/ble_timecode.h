@@ -14,6 +14,11 @@ extern const BLEUUID bleTimecodeConfigCharUUID;
 typedef bool (*BleConfigCb)(const char *cmd, const char *val);
 void bleTimecodeSetConfigCallback(BleConfigCb cb);
 
+// BLE state read callback — returns a string describing current device state
+// (wifi status, SSID, IP, RSSI, etc.) for the app to read.
+typedef const char* (*BleStateCb)();
+void bleTimecodeSetStateCallback(BleStateCb cb);
+
 // Runtime mode management (always available)
 int bleGetMode();
 void bleSetMode(int mode);

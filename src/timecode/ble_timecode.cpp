@@ -27,9 +27,11 @@ const BLEUUID bleTimecodeNameCharUUID("9a6f0003-5c9a-4b3e-8a2c-f12345678901");
 const BLEUUID bleTimecodeConfigCharUUID("9a6f0004-5c9a-4b3e-8a2c-f12345678901");
 
 static BleConfigCb bleConfigCb = nullptr;
-void bleTimecodeSetConfigCallback(BleConfigCb cb) { bleConfigCb = cb; }
+static BleStateCb bleStateCb = nullptr;
 
-// ── BLE config characteristic callback ──────────────────────────
+void bleTimecodeSetConfigCallback(BleConfigCb cb) { bleConfigCb = cb; }
+void bleTimecodeSetStateCallback(BleStateCb cb) { bleStateCb = cb; }
+
 class BleConfigCallbacks : public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic *pChar) override {
         if (!bleConfigCb) return;
@@ -40,6 +42,11 @@ class BleConfigCallbacks : public BLECharacteristicCallbacks {
         std::string cmd = val.substr(0, colon);
         std::string arg = val.substr(colon + 1);
         bleConfigCb(cmd.c_str(), arg.c_str());
+    }
+    void onRead(BLECharacteristic *pChar) override {
+        if (bleStateCb) {
+            pChar->setValue(bleStateCb());
+        }
     }
 };
 
@@ -349,7 +356,7 @@ void bleTimecodeInit() {
 
     BLECharacteristic *cfgChar = svc->createCharacteristic(
         bleTimecodeConfigCharUUID,
-        BLECharacteristic::PROPERTY_WRITE
+        BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_READ
     );
     cfgChar->setCallbacks(new BleConfigCallbacks());
     cfgChar->setValue("");
@@ -629,7 +636,7 @@ void bleTimecodeInit() {
 
     BLECharacteristic *cfgChar = svc->createCharacteristic(
         bleTimecodeConfigCharUUID,
-        BLECharacteristic::PROPERTY_WRITE
+        BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_READ
     );
     cfgChar->setCallbacks(new BleConfigCallbacks());
     cfgChar->setValue("");

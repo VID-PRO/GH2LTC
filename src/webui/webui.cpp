@@ -656,6 +656,23 @@ void WebUI::setBrightness(uint8_t val) {
     if (_brightnessCb) _brightnessCb(val);
 }
 
+void WebUI::connectWifi(const char *ssid, const char *password) {
+    _saveStaCreds(ssid, password);
+    _connectSta(ssid, password);
+}
+
+void WebUI::forgetWifi() {
+    WiFi.disconnect();
+    _staSsid[0] = '\0';
+    _staPassword[0] = '\0';
+    _staIp = IPAddress(0, 0, 0, 0);
+    _prefs.begin("webui", false);
+    _prefs.remove("sta_ssid");
+    _prefs.remove("sta_pass");
+    _prefs.end();
+    Serial.println(F("WebUI STA:     credentials cleared via BLE"));
+}
+
 // =======================================================================
 // Embedded HTML/CSS/JS — DJI Nucleus-inspired fullscreen timecode UI
 // =======================================================================

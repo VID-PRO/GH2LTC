@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <WiFi.h>
 #include <esp_wifi.h>
 #include "esp_system.h"
 #include <Preferences.h>
@@ -996,14 +997,18 @@ static void hdmiLoop() {
 
 #if OLED_ENABLE
         if (webui.oledEnabled()) {
-            fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
-            oled.update(tcStr, ltc.fps(), hdmiOk ? 1 : (rtcPresent ? 2 : 0), gDeviceName, webui.autoFps(), "OUT", 0, readBatteryPct(), 'M', bleTimecodeConnectedCount() > 0);
-        }
+            bool menuDrawn = false;
 #if BTN_UP_PIN >= 0
-        if (menu.active() && webui.oledEnabled()) {
-            menu.draw();
-        }
+            if (menu.active()) {
+                menu.draw();
+                menuDrawn = true;
+            }
 #endif
+            if (!menuDrawn) {
+                fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
+                oled.update(tcStr, ltc.fps(), hdmiOk ? 1 : (rtcPresent ? 2 : 0), gDeviceName, webui.autoFps(), "OUT", 0, readBatteryPct(), 'M', bleTimecodeConnectedCount() > 0, webui.wifiEnabled());
+            }
+        }
 #endif
 #if MAX7219_ENABLE
         if (webui.matrixEnabled()) {
@@ -1189,16 +1194,20 @@ static void ltcLoop() {
 
 #if OLED_ENABLE
         if (webui.oledEnabled()) {
-            fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
-            oled.update(tcStr, ltc.fps(), (decoderActive && ltcDecoder.locked()) ? 1 : (rtcPresent ? 2 : 0),
-                        gDeviceName, webui.autoFps(), masterRoleStr(role), 0,
-                        readBatteryPct(), 'M', bleTimecodeConnectedCount() > 0);
-        }
+            bool menuDrawn = false;
 #if defined(TCWL_LTC) && BTN_UP_PIN >= 0
-        if (menu.active() && webui.oledEnabled()) {
-            menu.draw();
-        }
+            if (menu.active()) {
+                menu.draw();
+                menuDrawn = true;
+            }
 #endif
+            if (!menuDrawn) {
+                fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
+                oled.update(tcStr, ltc.fps(), (decoderActive && ltcDecoder.locked()) ? 1 : (rtcPresent ? 2 : 0),
+                            gDeviceName, webui.autoFps(), masterRoleStr(role), 0,
+                            readBatteryPct(), 'M', bleTimecodeConnectedCount() > 0, webui.wifiEnabled());
+            }
+        }
 #endif
 
 #if MAX7219_ENABLE
@@ -1241,15 +1250,19 @@ static void ltcLoop() {
 
 #if OLED_ENABLE
         if (webui.oledEnabled()) {
-            fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
-            uint8_t lockSt = bleTimecodeConnected() ? 3 : (rtcPresent ? 2 : 0);
-            oled.update(tcStr, ltc.fps(), lockSt, gDeviceName, webui.autoFps(), "OUT", 0, readBatteryPct(), 'S', bleTimecodeConnectedCount() > 0);
-        }
+            bool menuDrawn = false;
 #if defined(TCWL_LTC) && BTN_UP_PIN >= 0
-        if (menu.active() && webui.oledEnabled()) {
-            menu.draw();
-        }
+            if (menu.active()) {
+                menu.draw();
+                menuDrawn = true;
+            }
 #endif
+            if (!menuDrawn) {
+                fmtTcStr(ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff());
+                uint8_t lockSt = bleTimecodeConnected() ? 3 : (rtcPresent ? 2 : 0);
+                oled.update(tcStr, ltc.fps(), lockSt, gDeviceName, webui.autoFps(), "OUT", 0, readBatteryPct(), 'S', bleTimecodeConnectedCount() > 0, webui.wifiEnabled());
+            }
+        }
 #endif
 
 #if MAX7219_ENABLE
@@ -1564,7 +1577,36 @@ void setup() {
                 return true;
             }
 #endif
+            if (strcmp(cmd, "wifi") == 0) {
+                webui.setWifiEnabled(atoi(val) != 0);
+                return true;
+            }
+            if (strcmp(cmd, "wifi_ssid") == 0) {
+                const char *delim = strchr(val, ',');
+                if (delim) {
+                    std::string ssid(val, delim - val);
+                    const char *pass = delim + 1;
+                    webui.connectWifi(ssid.c_str(), pass);
+                }
+                return true;
+            }
+            if (strcmp(cmd, "wifi_forget") == 0) {
+                webui.forgetWifi();
+                return true;
+            }
             return false; // unknown command
+        });
+
+        // State read callback — return current device state for the Android app
+        bleTimecodeSetStateCallback([]() -> const char* {
+            static char state[256];
+            snprintf(state, sizeof(state),
+                "wifi=%d|ssid=%s|ip=%s|rssi=%d",
+                webui.wifiEnabled() ? 1 : 0,
+                webui.staSsid(),
+                webui.staIp().toString().c_str(),
+                webui.wifiEnabled() ? static_cast<int>(WiFi.RSSI()) : 0);
+            return state;
         });
 #ifdef TCWL_CLAP
         // Override stale BLE name left by another variant.

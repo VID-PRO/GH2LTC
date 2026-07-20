@@ -2,6 +2,7 @@ package com.tcwl.timecode
 
 import android.Manifest
 import android.bluetooth.BluetoothAdapter
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -13,6 +14,10 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,9 +27,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -317,6 +324,7 @@ fun ConfigDrawer(
     currentTimecode: Timecode,
 ) {
     val connectedName by bleManager.deviceName.collectAsStateWithLifecycle()
+    val deviceState by bleManager.deviceState.collectAsStateWithLifecycle()
     val isClap = connectedName.contains("CLAP", ignoreCase = true)
     val isLtc = connectedName.contains("LTC", ignoreCase = true)
     var selectedFps by remember { mutableStateOf(25) }
@@ -505,6 +513,95 @@ fun ConfigDrawer(
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Set Name")
+        }
+
+        Divider(modifier = Modifier.padding(vertical = 16.dp))
+
+        // WiFi
+        Text("WiFi", style = MaterialTheme.typography.titleSmall, color = Color.Gray)
+        Spacer(Modifier.height(8.dp))
+
+        val context = LocalContext.current
+        val prefs = remember { context.getSharedPreferences("tcwl", Context.MODE_PRIVATE) }
+
+        // Initialize from real device state when connected; fall back to SharedPreferences
+        var wifiEnabled by remember(deviceState) {
+            mutableStateOf(deviceState["wifi"]?.let { it == "1" }
+                ?: prefs.getBoolean("wifi_en", true))
+        }
+        var wifiSsid by remember(deviceState) {
+            mutableStateOf(deviceState["ssid"]?.takeIf { it.isNotEmpty() && it != "(null)" }
+                ?: prefs.getString("wifi_ssid", "") ?: "")
+        }
+        var wifiPass by remember { mutableStateOf(prefs.getString("wifi_pass", "") ?: "") }
+        var wifiShowPass by remember { mutableStateOf(false) }
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("WiFi Radio", modifier = Modifier.weight(1f))
+            Switch(
+                checked = wifiEnabled,
+                onCheckedChange = {
+                    wifiEnabled = it
+                    prefs.edit().putBoolean("wifi_en", it).apply()
+                    bleManager.sendConfig("wifi", if (it) "1" else "0")
+                    bleManager.readState()
+                    onStatus("WiFi ${if (it) "enabled" else "disabled"}")
+                }
+            )
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        OutlinedTextField(
+            value = wifiSsid,
+            onValueChange = { wifiSsid = it },
+            label = { Text("SSID") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(4.dp))
+        OutlinedTextField(
+            value = wifiPass,
+            onValueChange = { wifiPass = it },
+            label = { Text("Password") },
+            singleLine = true,
+            visualTransformation = if (wifiShowPass) VisualTransformation.None else PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            trailingIcon = {
+                Text(
+                    if (wifiShowPass) "🙈" else "👁",
+                    modifier = Modifier.clickable { wifiShowPass = !wifiShowPass }
+                )
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = {
+                    prefs.edit().putString("wifi_ssid", wifiSsid).putString("wifi_pass", wifiPass).apply()
+                    bleManager.sendConfig("wifi_ssid", "$wifiSsid,$wifiPass")
+                    bleManager.readState()
+                    onStatus("WiFi connecting...")
+                },
+                enabled = wifiSsid.isNotBlank(),
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Connect")
+            }
+            OutlinedButton(
+                onClick = {
+                    bleManager.sendConfig("wifi_forget", "1")
+                    bleManager.readState()
+                    wifiSsid = ""
+                    wifiPass = ""
+                    prefs.edit().remove("wifi_ssid").remove("wifi_pass").apply()
+                    onStatus("WiFi credentials cleared")
+                },
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Forget")
+            }
         }
 
         Divider(modifier = Modifier.padding(vertical = 16.dp))

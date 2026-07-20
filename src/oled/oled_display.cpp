@@ -45,7 +45,7 @@ void OledDisplay::update(const char *timecode, uint8_t fps, uint8_t lockState,
                          const char *deviceName, bool autoFps,
                          const char *ltcMode, uint8_t slaveCount,
                          uint8_t batteryPct, uint8_t masterIndicator,
-                         bool bleConnected) {
+                         bool bleConnected, bool wifiEnabled) {
     (void)slaveCount;
     if (!_present || !_enabled) return;
     if (strcmp(timecode, _lastTc) == 0 && fps == _lastFps) return;
@@ -67,11 +67,10 @@ void OledDisplay::update(const char *timecode, uint8_t fps, uint8_t lockState,
         _display.setCursor(0, 1);
         _display.print('B');
         iconRight = 8;
+    }
+    if (wifiEnabled) {
         drawWifiIcon(_display, iconRight, 0);
         iconRight += 8;
-    } else {
-        drawWifiIcon(_display, 0, 0);
-        iconRight = 8;
     }
 
     int bx = 95;

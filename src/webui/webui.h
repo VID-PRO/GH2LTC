@@ -48,6 +48,8 @@ public:
     void setWifiEnabled(bool en);
     void setMatrixEnabled(bool en);
     void setBrightness(uint8_t val);
+    void connectWifi(const char *ssid, const char *password);
+    void forgetWifi();
 
     // Accessors for the config dump / web UI
     IPAddress apIp() const { return _apIp; }

@@ -45,6 +45,9 @@ class BleManager(private val context: Context) {
     private val _deviceName = MutableStateFlow("TC-WL-HDMI")
     val deviceName: StateFlow<String> = _deviceName
 
+    private val _deviceState = MutableStateFlow<Map<String, String>>(emptyMap())
+    val deviceState: StateFlow<Map<String, String>> = _deviceState
+
     val timecodeChannel = Channel<Timecode>(Channel.BUFFERED)
 
     private var bluetoothGatt: BluetoothGatt? = null
@@ -100,6 +103,11 @@ class BleManager(private val context: Context) {
                 it.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
                 gatt.writeCharacteristic(it)
             }
+
+            // Read device state (wifi, ssid, etc.)
+            configCharacteristic?.let {
+                gatt.readCharacteristic(it)
+            }
             _connectionState.value = ConnectionState.CONNECTED
         }
 
@@ -112,6 +120,22 @@ class BleManager(private val context: Context) {
                 val tc = Timecode.fromBytes(value)
                 _timecode.value = tc
                 timecodeChannel.trySend(tc)
+            }
+        }
+
+        override fun onCharacteristicRead(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            value: ByteArray,
+            status: Int,
+        ) {
+            if (characteristic.uuid == CONFIG_CHAR_UUID) {
+                val raw = String(value, Charsets.UTF_8).trimEnd('\u0000')
+                val state = raw.split('|').mapNotNull { kv ->
+                    val parts = kv.split('=', limit = 2)
+                    if (parts.size == 2) parts[0] to parts[1] else null
+                }.toMap()
+                _deviceState.value = state
             }
         }
     }
@@ -158,6 +182,12 @@ class BleManager(private val context: Context) {
         tcCharacteristic = null
         configCharacteristic = null
         _connectionState.value = ConnectionState.DISCONNECTED
+    }
+
+    fun readState() {
+        val gatt = bluetoothGatt ?: return
+        val char = configCharacteristic ?: return
+        gatt.readCharacteristic(char)
     }
 
     fun sendConfig(cmd: String, value: String) {
