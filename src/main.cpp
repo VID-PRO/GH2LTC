@@ -89,6 +89,28 @@ static Button btnDown(BTN_DOWN_PIN);
 static Button btnOk(BTN_OK_PIN);
 static Button btnCancel(BTN_CANCEL_PIN);
 static OledMenu menu(oled);
+
+static bool _pendingReboot = false;
+static unsigned long _rebootTimer = 0;
+
+static bool handleRebootDisplay() {
+    if (!_pendingReboot) return false;
+    unsigned long elapsed = millis() - _rebootTimer;
+    if (elapsed >= 2000) {
+        auto &d = oled.display();
+        d.clearDisplay();
+        d.setTextSize(2);
+        d.setTextColor(WHITE);
+        d.setCursor(28, 24);
+        d.print("REBOOT");
+        d.display();
+        if (elapsed >= 2500) {
+            ESP.restart();
+        }
+        return true;
+    }
+    return false;
+}
 #endif
 #endif
 
@@ -429,8 +451,9 @@ static const char* menuGetMode() {
 }
 static void menuToggleMode() {
     bleSetMode(bleGetMode() == TCWL_MODE_LTC_MASTER ? TCWL_MODE_LTC : TCWL_MODE_LTC_MASTER);
-    delay(100);
-    ESP.restart();
+    menu.hide();
+    _pendingReboot = true;
+    _rebootTimer = millis();
 }
 static const char* menuGetMatrix() { return webui.matrixEnabled() ? "On" : "Off"; }
 static const char* menuGetBright() {
@@ -446,7 +469,9 @@ static void menuCycleRole() {
     int r = getMasterRole();
     r = (r + 1) % 3;  // 0→1→2→0
     setMasterRole(r);
-    ESP.restart();
+    menu.hide();
+    _pendingReboot = true;
+    _rebootTimer = millis();
 }
 
 static void menuBuildItems() {
@@ -996,7 +1021,7 @@ static void hdmiLoop() {
 #endif
 
 #if OLED_ENABLE
-        if (webui.oledEnabled()) {
+        if (!handleRebootDisplay() && webui.oledEnabled()) {
             bool menuDrawn = false;
 #if BTN_UP_PIN >= 0
             if (menu.active()) {
@@ -1193,7 +1218,7 @@ static void ltcLoop() {
         }
 
 #if OLED_ENABLE
-        if (webui.oledEnabled()) {
+        if (!handleRebootDisplay() && webui.oledEnabled()) {
             bool menuDrawn = false;
 #if defined(TCWL_LTC) && BTN_UP_PIN >= 0
             if (menu.active()) {
@@ -1249,7 +1274,7 @@ static void ltcLoop() {
         bleTimecodeUpdate(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff(), bleTimecodeConnected() ? 3 : (rtcPresent ? 2 : 0), ltc.fps(), (webui.autoFps() ? 1 : 0) | (0 << 2), readBatteryPct());
 
 #if OLED_ENABLE
-        if (webui.oledEnabled()) {
+        if (!handleRebootDisplay() && webui.oledEnabled()) {
             bool menuDrawn = false;
 #if defined(TCWL_LTC) && BTN_UP_PIN >= 0
             if (menu.active()) {
