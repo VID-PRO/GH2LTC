@@ -83,13 +83,6 @@ static void fmtTcStr(uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff) {
 static OledDisplay oled;
 static char gDeviceName[33] = "";
 
-#if OLED_ENABLE && BTN_UP_PIN >= 0
-static Button btnUp(BTN_UP_PIN);
-static Button btnDown(BTN_DOWN_PIN);
-static Button btnOk(BTN_OK_PIN);
-static Button btnCancel(BTN_CANCEL_PIN);
-static OledMenu menu(oled);
-
 static bool _pendingReboot = false;
 static unsigned long _rebootTimer = 0;
 
@@ -111,6 +104,13 @@ static bool handleRebootDisplay() {
     }
     return false;
 }
+
+#if OLED_ENABLE && BTN_UP_PIN >= 0
+static Button btnUp(BTN_UP_PIN);
+static Button btnDown(BTN_DOWN_PIN);
+static Button btnOk(BTN_OK_PIN);
+static Button btnCancel(BTN_CANCEL_PIN);
+static OledMenu menu(oled);
 #endif
 #endif
 
