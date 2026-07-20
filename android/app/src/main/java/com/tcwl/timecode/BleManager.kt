@@ -116,7 +116,7 @@ class BleManager(private val context: Context) {
             characteristic: BluetoothGattCharacteristic,
             value: ByteArray,
         ) {
-            if (characteristic.uuid == TC_CHAR_UUID) {
+            if (characteristic.uuid == TC_CHAR_UUID && value.size >= 5) {
                 val tc = Timecode.fromBytes(value)
                 _timecode.value = tc
                 timecodeChannel.trySend(tc)

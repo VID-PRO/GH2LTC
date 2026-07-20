@@ -182,6 +182,7 @@ fun MainScreen(bleManager: BleManager) {
         ) { padding ->
             TimecodeDisplay(
                 timecode = timecode,
+                isConnected = connectionState == ConnectionState.CONNECTED,
                 deviceName = if (connectionState == ConnectionState.CONNECTED)
                     bleManager.deviceName.collectAsStateWithLifecycle().value else "TC-WL",
                 modifier = Modifier
@@ -205,7 +206,7 @@ fun MainScreen(bleManager: BleManager) {
 }
 
 @Composable
-fun TimecodeDisplay(timecode: Timecode, deviceName: String = "TC-WL", modifier: Modifier = Modifier) {
+fun TimecodeDisplay(timecode: Timecode, deviceName: String = "TC-WL", isConnected: Boolean = true, modifier: Modifier = Modifier) {
     val isLtcDevice = deviceName.contains("LTC", ignoreCase = true)
     BoxWithConstraints(
         modifier = modifier
@@ -248,7 +249,7 @@ fun TimecodeDisplay(timecode: Timecode, deviceName: String = "TC-WL", modifier: 
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                if (timecode.dd > 0) {
+                if (isConnected && timecode.dd > 0) {
                     Text(
                         text = "%02d".format(timecode.dd),
                         color = Color(0xFF888888),
@@ -258,8 +259,8 @@ fun TimecodeDisplay(timecode: Timecode, deviceName: String = "TC-WL", modifier: 
                     Spacer(Modifier.height(4.dp))
                 }
                 Text(
-                    text = timecode.display,
-                    color = Color(0xFF00FF88),
+                    text = if (isConnected) timecode.display else "--:--:--:--",
+                    color = if (isConnected) Color(0xFF00FF88) else Color(0xFF444444),
                     fontSize = tcFontSize,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
@@ -333,7 +334,9 @@ fun ConfigDrawer(
     var deviceName by remember { mutableStateOf(connectedName) }
     LaunchedEffect(connectedName) { deviceName = connectedName }
     LaunchedEffect(connectionState) {
-        if (connectionState == ConnectionState.DISCONNECTED) {
+        if (connectionState == ConnectionState.CONNECTED) {
+            bleManager.readState()
+        } else if (connectionState == ConnectionState.DISCONNECTED) {
             selectedFps = 25
             dropFrame = false
             brightness = 7
@@ -524,17 +527,20 @@ fun ConfigDrawer(
         val context = LocalContext.current
         val prefs = remember { context.getSharedPreferences("tcwl", Context.MODE_PRIVATE) }
 
-        // Initialize from real device state when connected; fall back to SharedPreferences
-        var wifiEnabled by remember(deviceState) {
-            mutableStateOf(deviceState["wifi"]?.let { it == "1" }
-                ?: prefs.getBoolean("wifi_en", true))
-        }
-        var wifiSsid by remember(deviceState) {
-            mutableStateOf(deviceState["ssid"]?.takeIf { it.isNotEmpty() && it != "(null)" }
-                ?: prefs.getString("wifi_ssid", "") ?: "")
-        }
+        // Use SharedPreferences as initial fallback; update from device state when BLE read completes
+        var wifiEnabled by remember { mutableStateOf(prefs.getBoolean("wifi_en", true)) }
+        var wifiSsid by remember { mutableStateOf(prefs.getString("wifi_ssid", "") ?: "") }
         var wifiPass by remember { mutableStateOf(prefs.getString("wifi_pass", "") ?: "") }
         var wifiShowPass by remember { mutableStateOf(false) }
+
+        // Override with real device state once the BLE read arrives
+        LaunchedEffect(deviceState) {
+            if (deviceState.isNotEmpty()) {
+                deviceState["wifi"]?.let { wifiEnabled = it == "1" }
+                deviceState["ssid"]?.takeIf { it.isNotEmpty() && it != "(null)" }
+                    ?.let { wifiSsid = it }
+            }
+        }
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("WiFi Radio", modifier = Modifier.weight(1f))
