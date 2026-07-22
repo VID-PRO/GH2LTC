@@ -95,7 +95,7 @@ void OledMenu::draw() {
         if (idx >= _count) break;
 
         Item &item = _items[idx];
-        int y = 14 + i * 10;
+        int y = 17 + i * 10;
 
         if (idx == _cursor) {
             d.setCursor(2, y);
@@ -104,7 +104,7 @@ void OledMenu::draw() {
 
         char buf[22];
         const char *val = item.getValue ? item.getValue() : "";
-        snprintf(buf, sizeof(buf), "%-13s%7s", item.label, val);
+        snprintf(buf, sizeof(buf), "%-11s%6s", item.label, val);
 
         int x = 12;
         d.getTextBounds(buf, 0, 0, &x1, &y1, &w, &h);
@@ -115,7 +115,7 @@ void OledMenu::draw() {
             if (maxChars < 1) maxChars = 1;
             int labelChars = labelLen;
             if (labelChars > maxChars) labelChars = maxChars;
-            snprintf(buf, sizeof(buf), "%.*s %s", labelChars, item.label, val);
+            snprintf(buf, sizeof(buf), "%-*s%6s", maxChars, item.label, val);
         }
         d.setCursor(x, y);
         d.print(buf);
@@ -125,16 +125,12 @@ void OledMenu::draw() {
         bool canScrollUp = _scroll > 0;
         bool canScrollDown = (_scroll + VISIBLE) < _count;
         if (canScrollUp && canScrollDown) {
-            d.setCursor(120, 55);
-            d.print("^");
-            d.setCursor(120, 63);
-            d.print("v");
+            d.fillTriangle(120, 20, 116, 24, 124, 24, SSD1306_WHITE);
+            d.fillTriangle(120, 62, 116, 58, 124, 58, SSD1306_WHITE);
         } else if (canScrollUp) {
-            d.setCursor(124, 2);
-            d.print("^");
+            d.fillTriangle(120, 20, 116, 24, 124, 24, SSD1306_WHITE);
         } else if (canScrollDown) {
-            d.setCursor(124, 2);
-            d.print("v");
+            d.fillTriangle(120, 62, 116, 58, 124, 58, SSD1306_WHITE);
         }
     }
 

@@ -204,7 +204,9 @@ The 128×64 SSD1306 display is organized in three fixed zones (HDMI, LTC, and CL
 
 ### OLED Menu (HDMI & LTC only)
 
-A 4-button menu (UP/DOWN/OK/CANCEL) overlays the main screen when any button is pressed. The menu title is `SETTINGS`. Inactive for 15 s it auto-closes.
+A 4-button menu (UP/DOWN/OK/CANCEL) overlays the main screen when any button is pressed. The menu title is `SETTINGS`. Inactive for 15 s it auto-closes. Item values are right-aligned. Scroll arrows (▲/▼) are drawn with `fillTriangle()` on the right side when the list overflows.
+
+Reboot flow: pressing OK on **Mode** or **LTC Role** shows the new value for 2 s, then a centered **REBOOT** screen for 500 ms, then `ESP.restart()`.
 
 **LTC menu** — each item shows a value on the right; OK cycles/toggles; long‑OK on items marked † restarts:
 
@@ -215,6 +217,7 @@ A 4-button menu (UP/DOWN/OK/CANCEL) overlays the main screen when any button is 
  FPS Mode   Man
  Mode     Slave
  LTC Role    IN
+ Set TC
  LTC Out     On
  WiFi        On
  OLED        On
@@ -228,8 +231,9 @@ A 4-button menu (UP/DOWN/OK/CANCEL) overlays the main screen when any button is 
 | **FPS** | 24, 25, 30, 50, 60 | Cycles FPS; saved to NVS |
 | **DropFr** | On / Off | Toggles drop frame |
 | **FPS Mode** | Auto / Man | Toggles between auto-detect and manual FPS |
-| **Mode** | Master / Slave | Toggles BLE role; †restarts |
-| **LTC Role** | IN / OUT / BOTH | Decode / Generate / Both; †restarts |
+| **Mode** | Master / Slave | Toggles BLE role; 2 s preview → reboot |
+| **LTC Role** | IN / OUT / BOTH | Cycles on each OK press; automatically accepts after 2 s idle (up/down/cancel cancels pending accept); 2 s preview → reboot |
+| **Set TC** | — | Opens timecode editor (DD/HH/MM/SS/FF fields); OK advances field, OK on FF jams timecode; cancel exits without saving |
 | **LTC Out** | On / Off | Enables/disables LTC output |
 | **WiFi** | On / Off | Toggles WiFi radio |
 | **OLED** | On / Off | Toggles display |
@@ -244,6 +248,7 @@ A 4-button menu (UP/DOWN/OK/CANCEL) overlays the main screen when any button is 
  >FPS         25
  DropFr      Off
  FPS Mode   Auto
+ Set TC
  LTC Out      On
  WiFi         On
  OLED         On
@@ -255,6 +260,7 @@ A 4-button menu (UP/DOWN/OK/CANCEL) overlays the main screen when any button is 
 | **FPS** | 24, 25, 30, 50, 60 | Cycles FPS |
 | **DropFr** | On / Off | Toggles drop frame |
 | **FPS Mode** | Auto / Man | Toggles between auto-detect and manual FPS |
+| **Set TC** | — | Opens timecode editor — jam is a no-op (no LTC encoder in HDMI role); exit cancels |
 | **LTC Out** | On / Off | Enables/disables LTC output |
 | **WiFi** | On / Off | Toggles WiFi radio |
 | **OLED** | On / Off | Toggles display |
@@ -279,7 +285,7 @@ A custom 128-bit BLE service (`9a6f0001-...`) transfers timecode from HDMI/LTC t
 |------|------|------------|-------------|
 | `9a6f0002` | Timecode | READ + NOTIFY | 9-byte packet: dd, hh, mm, ss, ff, lockState, fps, flags, batteryPct |
 | `9a6f0003` | Name | WRITE | Peer announces its display name |
-| `9a6f0004` | Config | WRITE | ASCII `cmd:value` commands (FPS, brightness, jam, mode, name, restart, etc.) |
+| `9a6f0004` | Config | WRITE + READ | Write ASCII `cmd:value`; read returns `wifi=0|1,ssid=...,ip=...,rssi=...` |
 
 Timecode notification bytes:
 
@@ -435,6 +441,8 @@ The `android/` directory contains a Kotlin Compose app that connects to TC-WL de
 | **Brightness (CLAP)** | Slider for MAX7219 matrix intensity (0–15), only visible when connected to CLAP |
 | **Device name** | Change BLE broadcast name |
 | **Restart** | Remote reboot |
+| **Device state** | On connect and after each config command, reads WiFi status/SSID/IP/RSSI from the Config characteristic — WiFi fields reflect the actual device state |
+| **Timecode display** | Shows `--:--:--:--` when disconnected (ignoring empty BLE notifications) |
 
 Config commands are sent over BLE characteristic `9a6f0004` as ASCII `cmd:value` strings — no WiFi connection required once BLE is paired. The firmware parses the commands and applies them (same logic as the HTTP API).
 

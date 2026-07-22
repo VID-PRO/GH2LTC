@@ -86,6 +86,14 @@ static char gDeviceName[33] = "";
 static bool _pendingReboot = false;
 static unsigned long _rebootTimer = 0;
 
+static bool _delayedRecycle = false;
+static unsigned long _lastRecycle = 0;
+
+enum TcEditField { TC_DD, TC_HH, TC_MM, TC_SS, TC_FF };
+static bool _editingTc = false;
+static TcEditField _editField = TC_DD;
+static uint8_t _editVals[5] = {0, 0, 0, 0, 0};
+
 static bool handleRebootDisplay() {
     if (!_pendingReboot) return false;
     unsigned long elapsed = millis() - _rebootTimer;
@@ -103,6 +111,31 @@ static bool handleRebootDisplay() {
         return true;
     }
     return false;
+}
+
+static bool drawTcEditor() {
+    if (!_editingTc) return false;
+    auto &d = oled.display();
+    d.clearDisplay();
+    d.setTextSize(1);
+    d.setTextColor(SSD1306_WHITE);
+    const char* labels[] = {"DD", "HH", "MM", "SS", "FF"};
+    d.setCursor(28, 0);
+    d.print("SET TIMECODE");
+    d.drawFastHLine(0, 10, 128, SSD1306_WHITE);
+    int y = 17;
+    for (int i = 0; i < 5; i++) {
+        char buf[12];
+        snprintf(buf, sizeof(buf), "%s%s: %02u", _editField == i ? ">" : " ", labels[i], _editVals[i]);
+        d.setCursor(24, y);
+        d.print(buf);
+        y += 8;
+    }
+    d.drawFastHLine(0, 56, 128, SSD1306_WHITE);
+    d.setCursor(14, 57);
+    d.print("OK=next  CAN=exit");
+    d.display();
+    return true;
 }
 
 #if OLED_ENABLE && BTN_UP_PIN >= 0
@@ -467,13 +500,49 @@ static void menuCycleBright()  { webui.setBrightness((webui.brightness() + 1) % 
 static const char* menuGetRole() { return masterRoleStr(getMasterRole()); }
 static void menuCycleRole() {
     int r = getMasterRole();
-    r = (r + 1) % 3;  // 0→1→2→0
+    r = (r + 1) % 3;
     setMasterRole(r);
+    _delayedRecycle = true;
+    _lastRecycle = millis();
+}
+#endif
+
+// ── Shared TC editor (both LTC and HDMI) ─────────────────────
+static void menuSetTc() {
     menu.hide();
-    _pendingReboot = true;
-    _rebootTimer = millis();
+    _editingTc = true;
+    _editField = TC_DD;
+    _editVals[0] = ltc.dd();
+    _editVals[1] = ltc.hh();
+    _editVals[2] = ltc.mm();
+    _editVals[3] = ltc.ss();
+    _editVals[4] = ltc.ff();
 }
 
+static void handleTcEditorInput() {
+    if (!_editingTc) return;
+    if (btnUp.pressed()) {
+        static const uint8_t maxVals[] = {99, 23, 59, 59, 59};
+        if (_editVals[_editField] < maxVals[_editField]) _editVals[_editField]++;
+    }
+    if (btnDown.pressed()) {
+        if (_editVals[_editField] > 0) _editVals[_editField]--;
+    }
+    if (btnOk.released()) {
+        if (_editField >= TC_FF) {
+            ltc.setTime(_editVals[1], _editVals[2], _editVals[3], _editVals[4]);
+            ltc.setDd(_editVals[0]);
+            _editingTc = false;
+        } else {
+            _editField = static_cast<TcEditField>(_editField + 1);
+        }
+    }
+    if (btnCancel.released()) {
+        _editingTc = false;
+    }
+}
+
+#if TCWL_LTC
 static void menuBuildItems() {
     menu.clear();
     menu.addItem("FPS",       menuGetFps,    menuCycleFps);
@@ -481,6 +550,7 @@ static void menuBuildItems() {
     menu.addItem("FPS Mode",  menuGetAutoFps,menuToggleAutoFps);
     menu.addItem("Mode",      menuGetMode,   menuToggleMode);
     menu.addItem("LTC Role",  menuGetRole,   menuCycleRole);
+    menu.addItem("Set TC",    nullptr,       menuSetTc);
     menu.addItem("LTC Out",   menuGetLtcOut, menuToggleLtcOut);
     menu.addItem("WiFi",      menuGetWifi,   menuToggleWifi);
     menu.addItem("OLED",      menuGetOled,   menuToggleOled);
@@ -497,6 +567,7 @@ static void menuBuildItems() {
     menu.addItem("FPS",       menuGetFps,    menuCycleFps);
     menu.addItem("DropFr",    menuGetDf,     menuToggleDf);
     menu.addItem("FPS Mode",  menuGetAutoFps,menuToggleAutoFps);
+    menu.addItem("Set TC",    nullptr,       menuSetTc);
     menu.addItem("LTC Out",   menuGetLtcOut, menuToggleLtcOut);
     menu.addItem("WiFi",      menuGetWifi,   menuToggleWifi);
     menu.addItem("OLED",      menuGetOled,   menuToggleOled);
@@ -773,18 +844,31 @@ static void hdmiLoop() {
     btnOk.read();
     btnCancel.read();
 
-    if (!menu.active()) {
+    if (_editingTc) {
+        handleTcEditorInput();
+    } else if (!menu.active()) {
         if (btnUp.pressed() || btnDown.pressed() || btnOk.pressed() || btnCancel.pressed()) {
             menu.show();
         }
     }
 
-    if (menu.active()) {
-        if (btnUp.pressed())      menu.up();
-        if (btnDown.pressed())    menu.down();
+    if (_editingTc) {
+        // editor handles its own buttons
+    } else if (menu.active()) {
+        if (btnUp.pressed())      { menu.up(); _delayedRecycle = false; }
+        if (btnDown.pressed())    { menu.down(); _delayedRecycle = false; }
         if (btnOk.released())     menu.ok(btnOk.heldFor(2000));
-        if (btnCancel.released()) { menu.cancel(); oled.forceRedraw(); }
-        if (!menu.tick())         oled.forceRedraw();
+        if (btnCancel.released()) { menu.cancel(); oled.forceRedraw(); _delayedRecycle = false; }
+        if (!menu.tick())         { oled.forceRedraw(); _delayedRecycle = false; }
+    }
+    if (_delayedRecycle && !menu.active()) {
+        _delayedRecycle = false;
+    }
+    if (_delayedRecycle && millis() - _lastRecycle >= 2000) {
+        _delayedRecycle = false;
+        menu.hide();
+        _pendingReboot = true;
+        _rebootTimer = millis();
     }
 #endif
 
@@ -1021,7 +1105,9 @@ static void hdmiLoop() {
 #endif
 
 #if OLED_ENABLE
-        if (!handleRebootDisplay() && webui.oledEnabled()) {
+        if (drawTcEditor()) {
+            // editor drawn, skip rest
+        } else if (!handleRebootDisplay() && webui.oledEnabled()) {
             bool menuDrawn = false;
 #if BTN_UP_PIN >= 0
             if (menu.active()) {
@@ -1150,18 +1236,31 @@ static void ltcLoop() {
     btnOk.read();
     btnCancel.read();
 
-    if (!menu.active()) {
+    if (_editingTc) {
+        handleTcEditorInput();
+    } else if (!menu.active()) {
         if (btnUp.pressed() || btnDown.pressed() || btnOk.pressed() || btnCancel.pressed()) {
             menu.show();
         }
     }
 
-    if (menu.active()) {
-        if (btnUp.pressed())      menu.up();
-        if (btnDown.pressed())    menu.down();
+    if (_editingTc) {
+        // editor handles its own buttons
+    } else if (menu.active()) {
+        if (btnUp.pressed())      { menu.up(); _delayedRecycle = false; }
+        if (btnDown.pressed())    { menu.down(); _delayedRecycle = false; }
         if (btnOk.released())     menu.ok(btnOk.heldFor(2000));
-        if (btnCancel.released()) { menu.cancel(); oled.forceRedraw(); }
-        if (!menu.tick())         oled.forceRedraw();
+        if (btnCancel.released()) { menu.cancel(); oled.forceRedraw(); _delayedRecycle = false; }
+        if (!menu.tick())         { oled.forceRedraw(); _delayedRecycle = false; }
+    }
+    if (_delayedRecycle && !menu.active()) {
+        _delayedRecycle = false;
+    }
+    if (_delayedRecycle && millis() - _lastRecycle >= 2000) {
+        _delayedRecycle = false;
+        menu.hide();
+        _pendingReboot = true;
+        _rebootTimer = millis();
     }
 #endif
 
@@ -1218,7 +1317,9 @@ static void ltcLoop() {
         }
 
 #if OLED_ENABLE
-        if (!handleRebootDisplay() && webui.oledEnabled()) {
+        if (drawTcEditor()) {
+            // editor drawn, skip rest
+        } else if (!handleRebootDisplay() && webui.oledEnabled()) {
             bool menuDrawn = false;
 #if defined(TCWL_LTC) && BTN_UP_PIN >= 0
             if (menu.active()) {
@@ -1274,7 +1375,9 @@ static void ltcLoop() {
         bleTimecodeUpdate(ltc.dd(), ltc.hh(), ltc.mm(), ltc.ss(), ltc.ff(), bleTimecodeConnected() ? 3 : (rtcPresent ? 2 : 0), ltc.fps(), (webui.autoFps() ? 1 : 0) | (0 << 2), readBatteryPct());
 
 #if OLED_ENABLE
-        if (!handleRebootDisplay() && webui.oledEnabled()) {
+        if (drawTcEditor()) {
+            // editor drawn, skip rest
+        } else if (!handleRebootDisplay() && webui.oledEnabled()) {
             bool menuDrawn = false;
 #if defined(TCWL_LTC) && BTN_UP_PIN >= 0
             if (menu.active()) {
