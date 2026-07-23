@@ -422,7 +422,10 @@ void runReverseEngineerDump() {
 // ---------------------------------------------------------------------------
 // Slave-specific: BLE timecode callback
 // ---------------------------------------------------------------------------
-static void onBleTimecode(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff) {
+static void onBleTimecode(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff, uint8_t fps) {
+    if (fps != ltc.fps()) {
+        ltc.setFps(fps, ltc.dropFrame());
+    }
     ltc.setTime(hh, mm, ss, ff);
     ltc.setDd(dd);
 }

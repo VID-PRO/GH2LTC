@@ -13,7 +13,7 @@
 #include <vector>
 #include <algorithm>
 #if defined(CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE)
-#include "esp32-hal-hosted.h">
+#include "esp32-hal-hosted.h"
 extern "C" void hci_drv_init(void);
 #endif
 
@@ -543,8 +543,8 @@ class LtcClientCallbacks : public BLEClientCallbacks {
 };
 
 static void ltcNotifyCallback(BLERemoteCharacteristic *, uint8_t *data, size_t len, bool) {
-    if (len >= 5 && timecodeCb) {
-        timecodeCb(data[0], data[1], data[2], data[3], data[4]);
+    if (len >= 7 && timecodeCb) {
+        timecodeCb(data[0], data[1], data[2], data[3], data[4], data[6]);
     }
 }
 

@@ -45,7 +45,7 @@ typedef struct {
 uint8_t bleTimecodeGetPeers(BlePeerInfo *peers, uint8_t maxPeers);
 
 // LTC/CLAP-mode functions (no-ops in HDMI mode)
-typedef void (*BleTimecodeCb)(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff);
+typedef void (*BleTimecodeCb)(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff, uint8_t fps);
 void bleTimecodeSetCallback(BleTimecodeCb cb);
 void bleTimecodePoll();
 bool bleTimecodeConnected();
