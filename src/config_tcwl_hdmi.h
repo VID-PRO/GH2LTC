@@ -22,16 +22,15 @@
 // Reverse‑engineer mode (dump GH5 InfoFrame packets over serial to decode byte layout)
 #define REVERSE_ENGINEER_MODE 0
 
-// Button pins — GPIO 8 is used for I2C SCL on HDMI, so UP is moved to GPIO 10.
-// GPIO 2, 3, 10 are free because MAX7219 is disabled.
+// Button pins
 #undef BTN_UP_PIN
 #undef BTN_DOWN_PIN
 #undef BTN_OK_PIN
 #undef BTN_CANCEL_PIN
-#define BTN_UP_PIN       10
-#define BTN_DOWN_PIN      9
-#define BTN_OK_PIN        2
-#define BTN_CANCEL_PIN    3
+#define BTN_UP_PIN       27
+#define BTN_DOWN_PIN      32
+#define BTN_OK_PIN        33
+#define BTN_CANCEL_PIN    46
 
 // Battery ADC — GPIO 20 (ADC1_CH4) on 40-pin header pin 10.
 // Wire a voltage divider from battery to this pin.

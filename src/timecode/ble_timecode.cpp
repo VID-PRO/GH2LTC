@@ -306,34 +306,34 @@ void bleTimecodeInit() {
     bleName[sizeof(bleName) - 1] = '\0';
 
 #if defined(CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE) && defined(TCWL_HDMI)
-    {
-        uint32_t maj, min, pat;
-        // On cold boot the C6 may take a moment to finish its ESP-Hosted
-        // application init after SDIO enumeration.  Retry the version query
-        // before assuming the firmware is missing.
-        for (int retry = 0; retry < 5; retry++) {
-            hostedGetSlaveVersion(&maj, &min, &pat);
-            if (maj != 0 || min != 0 || pat != 0) break;
-            delay(1000);
-        }
-        if (maj == 0 && min == 0 && pat == 0) {
-            Serial.println("[C6] Firmware unknown / not responding, attempting update...");
-            Serial.println("[C6] Connect your computer to AP WiFi, then start:");
-            Serial.println("[C6]   python3 -m http.server 8080");
-            Serial.println("[C6]   in the directory with esp32c6-v2.12.8.bin");
-            for (int i = 30; i > 0; i--) {
-                Serial.printf("[C6] %d...\n", i);
-                delay(1000);
-            }
-            updateC6Firmware("192.168.4.2", 8080, "/esp32c6-v2.12.8.bin");
-        }
-    }
     hci_drv_init();
     Serial.printf("[BLE] hci_drv_init called\n");
 #endif
 
-    bool ok = BLEDevice::init(bleName);
+    bool ok = false;
+    for (int retry = 0; retry < 3; retry++) {
+        ok = BLEDevice::init(bleName);
+        if (ok) break;
+        delay(500);
+    }
     Serial.printf("[BLE] init(%s): %s\n", bleName, ok ? "ok" : "FAIL");
+    if (!ok) {
+#if defined(CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE) && defined(TCWL_HDMI)
+        Serial.println("[C6] Firmware not responding, attempting update...");
+        Serial.println("[C6] Connect your computer to AP WiFi, then start:");
+        Serial.println("[C6]   python3 -m http.server 8080");
+        Serial.println("[C6]   in the directory with esp32c6-v2.12.8.bin");
+        for (int i = 30; i > 0; i--) {
+            Serial.printf("[C6] %d...\n", i);
+            delay(1000);
+        }
+        updateC6Firmware("192.168.4.2", 8080, "/esp32c6-v2.12.8.bin");
+#else
+        Serial.println("[BLE] init failed, restarting...");
+        delay(1000);
+        ESP.restart();
+#endif
+    }
 #if defined(CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE)
     Serial.printf("[BLE] isHostedBLE: %s\n", BLEDevice::isHostedBLE() ? "yes" : "no");
     {

@@ -1438,15 +1438,17 @@ void setup() {
     Wire.setPins(TC_I2C_SDA_PIN, TC_I2C_SCL_PIN);
 
     Wire.begin(TC_I2C_SDA_PIN, TC_I2C_SCL_PIN, 100000);
-#if OLED_ENABLE
-    oled.begin();
-#endif
 
-    // On cold power-on the C6 ESP-Hosted coprocessor can take 3-4s to boot
+    // On cold power-on the C6 ESP-Hosted coprocessor can take 8-12s to boot
     // its firmware before it responds to SDIO enumeration. Warm resets skip
     // this delay since the C6 stays running.
     if (esp_reset_reason() == ESP_RST_POWERON) {
-        delay(3000);
+        Serial.print(F("Waiting for C6 coprocessor... "));
+        for (int i = 8; i > 0; i--) {
+            Serial.printf("%d ", i);
+            delay(1000);
+        }
+        Serial.println(F("done"));
     }
 
     Serial.print(F("TC-WL starting in "));
