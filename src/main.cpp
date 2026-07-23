@@ -1170,6 +1170,7 @@ static void ltcSetup() {
     Serial.printf("  OLED_ENABLED=%d\n", webui.oledEnabled());
     if (webui.oledEnabled()) {
         oled.begin();
+        delay(2500);
         Serial.println(F("OLED started"));
     } else {
         Serial.println(F("OLED disabled"));
@@ -1529,8 +1530,6 @@ void setup() {
 #else
     strncpy(gDeviceName, apSsid, sizeof(gDeviceName) - 1);
     gDeviceName[sizeof(gDeviceName) - 1] = '\0';
-    char *dash = strrchr(gDeviceName, '-');
-    if (dash) *dash = '\0';
 #endif
 #endif
     // Register persistent callbacks BEFORE begin() so NVS state applies at once

@@ -58,6 +58,7 @@ class BleConfigCallbacks : public BLECharacteristicCallbacks {
 static BLEServer *server = nullptr;
 static BLECharacteristic *tcChar = nullptr;
 static bool deviceConnected = false;
+static int hdmiTcSubscribers = 0;
 static char bleName[33] = "TC-WL-HDMI";
 
 struct PeerInfo {
@@ -67,11 +68,24 @@ struct PeerInfo {
 };
 static std::vector<PeerInfo> peers;
 
+class TcCharCallbacks : public BLECharacteristicCallbacks {
+    void onSubscribe(BLECharacteristic *pChar, ble_gap_conn_desc *desc, uint16_t subValue) override {
+        (void)pChar;
+        (void)desc;
+        if (subValue & 0x0001)
+            hdmiTcSubscribers++;
+        else
+            hdmiTcSubscribers--;
+        if (hdmiTcSubscribers < 0) hdmiTcSubscribers = 0;
+    }
+};
+
 class ServerCallbacks : public BLEServerCallbacks {
     void onConnect(BLEServer *pServer) override {
         deviceConnected = true;
     }
     void onDisconnect(BLEServer *pServer) override {
+        hdmiTcSubscribers = 0;
     }
 
 #if defined(CONFIG_BLUEDROID_ENABLED)
@@ -351,6 +365,7 @@ void bleTimecodeInit() {
         bleTimecodeCharUUID,
         BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
     );
+    tcChar->setCallbacks(new TcCharCallbacks());
     uint8_t init[5] = {0, 0, 0, 0, 0};
     tcChar->setValue(init, 5);
 
@@ -379,7 +394,7 @@ void bleTimecodeInit() {
 }
 
 void bleTimecodeUpdate(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff, uint8_t lockState, uint8_t fps, uint8_t flags, uint8_t batteryPct) {
-    if (!deviceConnected) return;
+    if (!deviceConnected || hdmiTcSubscribers == 0) return;
     uint8_t data[9] = {dd, hh, mm, ss, ff, lockState, fps, flags, batteryPct};
     tcChar->setValue(data, 9);
     tcChar->notify();
@@ -414,6 +429,7 @@ void bleSetMode(int mode) {
 static BLEServer *ltcServer = nullptr;
 static BLECharacteristic *ltcTcChar = nullptr;
 static bool ltcServerHasClients = false;
+static int ltcTcSubscribers = 0;
 static char ltcServerName[33] = "TC-WL-LTC";
 struct LtcPeerInfo {
     char address[18];
@@ -422,11 +438,24 @@ struct LtcPeerInfo {
 };
 static std::vector<LtcPeerInfo> ltcPeers;
 
+class LtcTcCharCallbacks : public BLECharacteristicCallbacks {
+    void onSubscribe(BLECharacteristic *pChar, ble_gap_conn_desc *desc, uint16_t subValue) override {
+        (void)pChar;
+        (void)desc;
+        if (subValue & 0x0001)
+            ltcTcSubscribers++;
+        else
+            ltcTcSubscribers--;
+        if (ltcTcSubscribers < 0) ltcTcSubscribers = 0;
+    }
+};
+
 class LtcServerCallbacks : public BLEServerCallbacks {
     void onConnect(BLEServer *) override {
         ltcServerHasClients = true;
     }
     void onDisconnect(BLEServer *) override {
+        ltcTcSubscribers = 0;
         ltcServerHasClients = false;
         ltcPeers.clear();
         BLEDevice::getAdvertising()->start();
@@ -448,6 +477,7 @@ class LtcServerCallbacks : public BLEServerCallbacks {
         uint16_t cid = param->disconnect.conn_id;
         ltcPeers.erase(std::remove_if(ltcPeers.begin(), ltcPeers.end(),
             [cid](const LtcPeerInfo &p) { return p.connId == cid; }), ltcPeers.end());
+        ltcTcSubscribers = 0;
         ltcServerHasClients = !ltcPeers.empty();
         BLEDevice::getAdvertising()->start();
     }
@@ -469,6 +499,7 @@ class LtcServerCallbacks : public BLEServerCallbacks {
         uint16_t cid = desc->conn_handle;
         ltcPeers.erase(std::remove_if(ltcPeers.begin(), ltcPeers.end(),
             [cid](const LtcPeerInfo &p) { return p.connId == cid; }), ltcPeers.end());
+        ltcTcSubscribers = 0;
         ltcServerHasClients = !ltcPeers.empty();
         BLEDevice::getAdvertising()->start();
     }
@@ -631,6 +662,7 @@ void bleTimecodeInit() {
         bleTimecodeCharUUID,
         BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
     );
+    ltcTcChar->setCallbacks(new LtcTcCharCallbacks());
     uint8_t init[5] = {0, 0, 0, 0, 0};
     ltcTcChar->setValue(init, 5);
 
@@ -815,7 +847,7 @@ const char *bleTimecodeGetName() {
 }
 
 void bleTimecodeUpdate(uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff, uint8_t lockState, uint8_t fps, uint8_t flags, uint8_t batteryPct) {
-    if (!ltcServerHasClients) return;
+    if (!ltcServerHasClients || ltcTcSubscribers == 0) return;
     uint8_t data[9] = {dd, hh, mm, ss, ff, lockState, fps, flags, batteryPct};
     ltcTcChar->setValue(data, 9);
     ltcTcChar->notify();
