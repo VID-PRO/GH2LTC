@@ -3,9 +3,6 @@
 
 TC358743::TC358743(TwoWire &wire, uint8_t addr) : _wire(wire), _addr(addr) {}
 
-// Forward declaration
-static void probePD3400();
-
 // p4kvm-known-good EDID from Waveshare HDMI-to-CSI adapter (1080p30)
 static const uint8_t EDID_1080P30_25[256] = {
     0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x52, 0x62, 0x88, 0x88, 0x00, 0x88, 0x88, 0x88,
@@ -467,63 +464,9 @@ bool TC358743::begin(int sda_pin, int scl_pin, int reset_pin, uint32_t refclk_hz
                       freqMon, tmdsClkKhz);
     }
 
-    probePD3400();
-
     return true;
 }
 
-// Probe DP-to-HDMI bridge at I2C address 0x18
-static void probePD3400()
-{
-    Serial.printf("--- Bridge probe (I2C 0x18) ---\n");
-
-    // Helper: read one byte with proper STOP between write and read
-    auto readReg = [](uint8_t reg) -> int {
-        Wire.beginTransmission(0x18);
-        Wire.write(reg);
-        if (Wire.endTransmission(true) != 0) return -1;  // STOP, not repeated START
-        Wire.requestFrom(0x18, 1);
-        if (!Wire.available()) return -1;
-        return Wire.read();
-    };
-
-    // Registers 0x00-0x1F
-    Serial.printf("  Regs 0x00-0x1F:\n ");
-    for (uint8_t r = 0; r < 0x20; r++) {
-        int v = readReg(r);
-        if (v >= 0) {
-            Serial.printf(" %02X:%02X", r, v);
-            if ((r & 0x0F) == 0x0F) Serial.printf("\n");
-        }
-    }
-
-    // Registers 0x60-0x6F (HDMI output) and 0x80-0xFF
-    Serial.printf("  Regs 0x60-0x6F:\n ");
-    for (uint8_t r = 0x60; r < 0x70; r++) {
-        int v = readReg(r);
-        if (v >= 0) {
-            Serial.printf(" %02X:%02X", r, v);
-            if ((r & 0x0F) == 0x0F) Serial.printf("\n");
-        }
-    }
-    // Quick write test: write 0xAA to 0x00, read back, restore
-    Wire.beginTransmission(0x18);
-    Wire.write(0x00);
-    Wire.write(0xAA);
-    int wr = Wire.endTransmission(true);
-    delay(5);
-    int test = readReg(0x00);
-    if (test == 0xAA) {
-        Serial.printf("  -> is writable (GPIO expander or config chip)\n");
-        // Restore
-        Wire.beginTransmission(0x18);
-        Wire.write(0x00);
-        Wire.write(0x03);  // restore original value
-        Wire.endTransmission(true);
-    } else {
-        Serial.printf("  -> read-only or write-ignored (test write returned 0x%02X)\n", test);
-    }
-}
 
 bool TC358743::hasSignal() {
     uint8_t status = readReg8(SYS_STATUS);
