@@ -1736,11 +1736,12 @@ void setup() {
         bleTimecodeSetStateCallback([]() -> const char* {
             static char state[256];
             snprintf(state, sizeof(state),
-                "wifi=%d|ssid=%s|ip=%s|rssi=%d",
+                "wifi=%d|ssid=%s|ip=%s|rssi=%d|fw=%s",
                 webui.wifiEnabled() ? 1 : 0,
                 webui.staSsid(),
                 webui.staIp().toString().c_str(),
-                webui.wifiEnabled() ? static_cast<int>(WiFi.RSSI()) : 0);
+                webui.wifiEnabled() ? static_cast<int>(WiFi.RSSI()) : 0,
+                FW_VERSION);
             return state;
         });
 #ifdef TCWL_CLAP

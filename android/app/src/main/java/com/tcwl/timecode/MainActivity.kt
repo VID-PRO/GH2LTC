@@ -625,6 +625,14 @@ fun ConfigDrawer(
 
         }
 
+        Text(
+            "FW v1.4.6",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color.Gray,
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            textAlign = TextAlign.Center,
+        )
+
         Spacer(Modifier.height(16.dp))
     }
 }

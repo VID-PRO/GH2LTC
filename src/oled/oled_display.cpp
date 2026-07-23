@@ -26,6 +26,10 @@ bool OledDisplay::begin() {
     _display.setCursor((128 - w) / 2, 0);
     _display.print("TC-WL");
 
+    _display.getTextBounds(FW_VERSION, 0, 0, &x1, &y1, &w, &h);
+    _display.setCursor((128 - w) / 2, 28);
+    _display.print(FW_VERSION);
+
     _display.getTextBounds("(c) by VID-PRO", 0, 0, &x1, &y1, &w, &h);
     _display.setCursor((128 - w) / 2, 54);
     _display.print("(c) by VID-PRO");

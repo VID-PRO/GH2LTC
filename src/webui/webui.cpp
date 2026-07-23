@@ -1158,6 +1158,7 @@ html += F(R"rawliteral(
     STA <span>__STA_SSID__</span> &nbsp;|&nbsp; <span>__STA_IP__</span>
   </div>
 )rawliteral");
+    html += "<div style=\"color:#444;font-size:11px;text-align:center;margin-top:10px;border-top:1px solid #2a2a2a;padding-top:8px;\">FW " FW_VERSION "</div>";
 #if defined(TCWL_LTC) && !defined(TCWL_CLAP)
     html += F(R"rawliteral(
   <div class="setting-row">

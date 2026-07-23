@@ -31,9 +31,9 @@ jobs:
 import sys, os, subprocess, json
 
 envs = {
-    'TC-WL-LTC':  {'chip': 'esp32c3', 'flash_mode': 'dio', 'flash_size': '4MB'},
-    'TC-WL-CLAP': {'chip': 'esp32c3', 'flash_mode': 'dio', 'flash_size': '4MB'},
-    'TC-WL-HDMI': {'chip': 'esp32p4', 'flash_mode': 'qio', 'flash_size': '16MB'},
+    'TC-WL-LTC':  {'chip': 'esp32c3', 'flash_mode': 'dio', 'flash_size': '4MB',  'boot_ofs': '0x0'},
+    'TC-WL-CLAP': {'chip': 'esp32c3', 'flash_mode': 'dio', 'flash_size': '4MB',  'boot_ofs': '0x0'},
+    'TC-WL-HDMI': {'chip': 'esp32p4', 'flash_mode': 'qio', 'flash_size': '16MB', 'boot_ofs': '0x2000'},
 }
 
 for env, cfg in envs.items():
@@ -57,9 +57,9 @@ for env, cfg in envs.items():
            '--flash_size', cfg['flash_size'],
            '--flash_freq', '80m']
 
-    # bootloader at 0x0 (if available)
+    # bootloader at chip-specific offset (if available)
     if os.path.exists(boot):
-        cmd += ['0x0', boot]
+        cmd += [cfg['boot_ofs'], boot]
     else:
         print(f'[WARN] {env}: bootloader.bin not found, skipping')
 
