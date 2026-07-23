@@ -41,7 +41,7 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
-            --generate-notes \
-            $(find merged -name '*.bin')
+            --generate-notes || true
+          gh release upload "$GITHUB_REF_NAME" $(find merged -name '*.bin') --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
