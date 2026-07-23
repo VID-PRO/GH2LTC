@@ -479,6 +479,7 @@ static void menuToggleLtcOut() { webui.setLtcEnabled(!webui.ltcEnabled()); }
 static void menuToggleOled()   { webui.setOledEnabled(!webui.oledEnabled()); oled.forceRedraw(); }
 static void menuToggleWifi()   { webui.setWifiEnabled(!webui.wifiEnabled()); }
 static void menuExit()         { menu.hide(); oled.forceRedraw(); }
+static void menuRestart()      { menu.hide(); _pendingReboot = true; _rebootTimer = millis(); }
 
 #if TCWL_LTC
 // ── LTC-specific menu helpers ─────────────────────────────────
@@ -559,6 +560,7 @@ static void menuBuildItems() {
     menu.addItem("OLED",      menuGetOled,   menuToggleOled);
     menu.addItem("Matrix",    menuGetMatrix, menuToggleMatrix);
     menu.addItem("Bright",    menuGetBright, menuCycleBright);
+    menu.addItem("Restart",   nullptr,       menuRestart);
     menu.addItem("Exit",      nullptr,       menuExit);
     menu.setTimeout(15000);
 }
@@ -574,6 +576,7 @@ static void menuBuildItems() {
     menu.addItem("LTC Out",   menuGetLtcOut, menuToggleLtcOut);
     menu.addItem("WiFi",      menuGetWifi,   menuToggleWifi);
     menu.addItem("OLED",      menuGetOled,   menuToggleOled);
+    menu.addItem("Restart",   nullptr,       menuRestart);
     menu.addItem("Exit",      nullptr,       menuExit);
     menu.setTimeout(15000);
 }
