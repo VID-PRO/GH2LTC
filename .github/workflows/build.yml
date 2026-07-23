@@ -1,0 +1,93 @@
+name: Build Firmware
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PlatformIO
+        run: pip install platformio esptool
+
+      - name: Build all environments
+        run: |
+          pio run -e TC-WL-LTC
+          pio run -e TC-WL-CLAP
+          pio run -e TC-WL-HDMI
+
+      - name: Merge firmware binaries
+        run: |
+          python3 -c "
+import sys, os, subprocess, json
+
+envs = {
+    'TC-WL-LTC':  {'chip': 'esp32c3', 'flash_mode': 'dio', 'flash_size': '4MB'},
+    'TC-WL-CLAP': {'chip': 'esp32c3', 'flash_mode': 'dio', 'flash_size': '4MB'},
+    'TC-WL-HDMI': {'chip': 'esp32p4', 'flash_mode': 'qio', 'flash_size': '16MB'},
+}
+
+for env, cfg in envs.items():
+    build_dir = f'.pio/build/{env}'
+    out_dir = f'merged/{env}'
+    os.makedirs(out_dir, exist_ok=True)
+    merged = os.path.join(out_dir, f'{env}-full.bin')
+
+    boot = os.path.join(build_dir, 'bootloader.bin')
+    part = os.path.join(build_dir, 'partitions.bin')
+    app  = os.path.join(build_dir, 'firmware.bin')
+    otad = os.path.join(build_dir, 'boot_app0.bin')
+
+    if not os.path.exists(app):
+        print(f'[WARN] {env}: firmware.bin not found, skipping')
+        continue
+
+    cmd = ['esptool.py', '--chip', cfg['chip'], 'merge_bin',
+           '-o', merged,
+           '--flash_mode', cfg['flash_mode'],
+           '--flash_size', cfg['flash_size'],
+           '--flash_freq', '80m']
+
+    # bootloader at 0x0 (if available)
+    if os.path.exists(boot):
+        cmd += ['0x0', boot]
+    else:
+        print(f'[WARN] {env}: bootloader.bin not found, skipping')
+
+    # partition table at 0x8000 (if available)
+    if os.path.exists(part):
+        cmd += ['0x8000', part]
+    else:
+        print(f'[WARN] {env}: partitions.bin not found, skipping')
+
+    # OTA data at 0xe000 (if available)
+    if os.path.exists(otad):
+        cmd += ['0xe000', otad]
+    else:
+        print(f'[WARN] {env}: boot_app0.bin not found, skipping')
+
+    # app at 0x10000
+    cmd += ['0x10000', app]
+
+    print(f'[{env}] merging into {merged}')
+    subprocess.run(cmd, check=True)
+
+    size = os.path.getsize(merged)
+    print(f'[{env}] merged size: {size} bytes ({size/1024/1024:.1f} MB)')
+"
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tc-wl-firmware
+          path: merged/
+          compression-level: 0
