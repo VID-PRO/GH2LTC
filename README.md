@@ -82,7 +82,7 @@ Reads Panasonic GH5 timecode from HDMI via TC358743 and regenerates it as SMPTE-
 | `TC-WL-HDMI` | ESP32-P4-WIFI6 | HDMI receiver, BLE server (multi-connection), physical buttons + OLED menu | via C6 coprocessor‡ (ESP-Hosted SDIO) | `pioarduino/platform-espressif32`† |
 
 † Pinned to GitHub: `https://github.com/pioarduino/platform-espressif32.git` (needed for ESP32-P4 `esp_timer` API compatibility; also used by LTC/CLAP for consistency)
-‡ ESP32-P4 has no native BLE controller. The Waveshare board's ESP32-C6 companion provides WiFi/BLE over SDIO via ESP-Hosted firmware (pre-flashed). All BLE code uses preprocessor guards (`SOC_BLE_SUPPORTED \|\| CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE`) to compile correctly on P4.
+‡ ESP32-P4 has no native BLE controller. The Waveshare board's ESP32-C6 companion provides WiFi/BLE over SDIO via ESP-Hosted firmware (pre-flashed). On cold power-on the C6 may take 1-3s to boot its firmware; `bleTimecodeInit()` retries `hostedGetSlaveVersion()` up to 5× (1s apart) before entering firmware-update mode, avoiding false-positive "Firmware unknown" fallback during normal operation. All BLE code uses preprocessor guards (`SOC_BLE_SUPPORTED \|\| CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE`) to compile correctly on P4.
 
 > **⚠️ NimBLE `reset()` bug**: The Arduino BLE library's NimBLE `reset()` omitted `m_advParams.channel_map` (defaulted to 0 = no advertising channels). This caused the C6 to never transmit ADV_IND frames — the device was connectable via direct CONNECT_IND (LTC worked) but invisible to BLE scanners. Fixed by patching the installed library at `BLEAdvertising.cpp:1459` to set `channel_map = 0x07`. A second fix restarts advertising after each connection so the Android app can discover the HDMI even while the LTC is connected.
 

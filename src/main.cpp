@@ -1442,10 +1442,12 @@ void setup() {
     oled.begin();
 #endif
 
-    // Kick H2 coprocessor firmware load early so the long init sequence below
-    // (~5 s for TC358743) doubles as a grace period for it to boot.
-    WiFi.mode(WIFI_OFF);
-    delay(100);
+    // On cold power-on the C6 ESP-Hosted coprocessor can take 3-4s to boot
+    // its firmware before it responds to SDIO enumeration. Warm resets skip
+    // this delay since the C6 stays running.
+    if (esp_reset_reason() == ESP_RST_POWERON) {
+        delay(3000);
+    }
 
     Serial.print(F("TC-WL starting in "));
 #if TCWL_CLAP

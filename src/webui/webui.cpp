@@ -54,25 +54,31 @@ void WebUI::begin(const char *apSsid, const char *apPassword,
     }
 
     // --- HTTP routes ---
-    _server.on("/",          std::bind(&WebUI::handleRoot,   this));
-    _server.on("/api/tc",    std::bind(&WebUI::handleApiTc,  this));
-    _server.on("/api/config", HTTP_POST, std::bind(&WebUI::handleApiConfig, this));
-    _server.on("/api/jam",   HTTP_POST, std::bind(&WebUI::handleApiJam,   this));
-    _server.on("/api/brightness", HTTP_ANY, std::bind(&WebUI::handleApiBrightness, this));
-    _server.on("/api/matrix",    HTTP_ANY, std::bind(&WebUI::handleApiMatrix,    this));
-    _server.on("/api/oled",      HTTP_ANY, std::bind(&WebUI::handleApiOled,      this));
-    _server.on("/api/ltc",       HTTP_ANY, std::bind(&WebUI::handleApiLtc,       this));
-    _server.on("/api/restart",   HTTP_POST, std::bind(&WebUI::handleApiRestart,   this));
-    _server.on("/api/wifi",  HTTP_ANY,  std::bind(&WebUI::handleApiWifi,  this));
-    _server.on("/api/ble",   HTTP_ANY,  std::bind(&WebUI::handleApiBle,   this));
-    _server.on("/api/mode",  HTTP_ANY,  std::bind(&WebUI::handleApiMode,  this));
-    _server.on("/api/update", HTTP_POST,
-               std::bind(&WebUI::handleApiUpdate, this),
-               std::bind(&WebUI::handleApiUpdateUpload, this));
-    _server.onNotFound(      std::bind(&WebUI::handleNotFound, this));
+    // Only start HTTP server if WiFi is enabled; ESP32-P4 + C6 ESP-Hosted
+    // does not create the lwIP tcpip thread unless WiFi.mode() / softAP()
+    // has been called, so _server.begin() would crash with "Invalid mbox".
+    if (_wifiEnabled) {
+        _server.on("/",          std::bind(&WebUI::handleRoot,   this));
+        _server.on("/api/tc",    std::bind(&WebUI::handleApiTc,  this));
+        _server.on("/api/config", HTTP_POST, std::bind(&WebUI::handleApiConfig, this));
+        _server.on("/api/jam",   HTTP_POST, std::bind(&WebUI::handleApiJam,   this));
+        _server.on("/api/brightness", HTTP_ANY, std::bind(&WebUI::handleApiBrightness, this));
+        _server.on("/api/matrix",    HTTP_ANY, std::bind(&WebUI::handleApiMatrix,    this));
+        _server.on("/api/oled",      HTTP_ANY, std::bind(&WebUI::handleApiOled,      this));
+        _server.on("/api/ltc",       HTTP_ANY, std::bind(&WebUI::handleApiLtc,       this));
+        _server.on("/api/restart",   HTTP_POST, std::bind(&WebUI::handleApiRestart,   this));
+        _server.on("/api/wifi",  HTTP_ANY,  std::bind(&WebUI::handleApiWifi,  this));
+        _server.on("/api/ble",   HTTP_ANY,  std::bind(&WebUI::handleApiBle,   this));
+        _server.on("/api/mode",  HTTP_ANY,  std::bind(&WebUI::handleApiMode,  this));
+        _server.on("/api/update", HTTP_POST,
+                   std::bind(&WebUI::handleApiUpdate, this),
+                   std::bind(&WebUI::handleApiUpdateUpload, this));
+        _server.onNotFound(      std::bind(&WebUI::handleNotFound, this));
 
-    _server.begin();
-    Serial.println(F("WebUI HTTP server started"));
+        _server.begin();
+        Serial.println(F("WebUI HTTP server started"));
+        _httpStarted = true;
+    }
 
     // Load brightness and matrix state from NVS (read/write to auto-create namespace)
     _prefs.begin("webui", false);
@@ -639,6 +645,10 @@ void WebUI::setWifiEnabled(bool en) {
     if (en) {
         WiFi.mode(WIFI_AP);
         WiFi.softAP(_apSsid, _apPassword[0] ? _apPassword : nullptr);
+        if (!_httpStarted) {
+            _server.begin();
+            _httpStarted = true;
+        }
     } else {
         WiFi.softAPdisconnect(true);
         WiFi.disconnect(true);

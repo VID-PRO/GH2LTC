@@ -62,7 +62,7 @@ private:
 
     uint8_t _dd = 0, _hh = 0, _mm = 0, _ss = 0, _ff = 0, _fps = 25;
     uint8_t _brightness = 4;
-    bool _dropFrame = false, _hdmiLocked = false, _matrixEnabled = false, _oledEnabled = true, _ltcEnabled = true, _wifiEnabled = true, _autoFps = true;
+    bool _dropFrame = false, _hdmiLocked = false, _matrixEnabled = false, _oledEnabled = true, _ltcEnabled = true, _wifiEnabled = true, _autoFps = true, _httpStarted = false;
     char _source[8] = "FREE";
 
     FpsCallback _fpsCb = nullptr;

@@ -308,9 +308,16 @@ void bleTimecodeInit() {
 #if defined(CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE) && defined(TCWL_HDMI)
     {
         uint32_t maj, min, pat;
-        hostedGetSlaveVersion(&maj, &min, &pat);
+        // On cold boot the C6 may take a moment to finish its ESP-Hosted
+        // application init after SDIO enumeration.  Retry the version query
+        // before assuming the firmware is missing.
+        for (int retry = 0; retry < 5; retry++) {
+            hostedGetSlaveVersion(&maj, &min, &pat);
+            if (maj != 0 || min != 0 || pat != 0) break;
+            delay(1000);
+        }
         if (maj == 0 && min == 0 && pat == 0) {
-            Serial.println("[C6] Firmware unknown, attempting update...");
+            Serial.println("[C6] Firmware unknown / not responding, attempting update...");
             Serial.println("[C6] Connect your computer to AP WiFi, then start:");
             Serial.println("[C6]   python3 -m http.server 8080");
             Serial.println("[C6]   in the directory with esp32c6-v2.12.8.bin");
