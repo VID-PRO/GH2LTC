@@ -41,9 +41,10 @@ jobs:
       - name: Release
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
+          python scripts/gen_release_body.py merged > /tmp/release_body.md
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
-            --generate-notes || true
+            --notes-file /tmp/release_body.md || true
           gh release upload "$GITHUB_REF_NAME" $(find merged -name '*.bin') --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
