@@ -1442,6 +1442,10 @@ void setup() {
 
     Wire.begin(TC_I2C_SDA_PIN, TC_I2C_SCL_PIN, 100000);
 
+#if OLED_ENABLE
+    oled.begin();
+#endif
+
     // On cold power-on the C6 ESP-Hosted coprocessor can take 8-12s to boot
     // its firmware before it responds to SDIO enumeration. Warm resets skip
     // this delay since the C6 stays running.
