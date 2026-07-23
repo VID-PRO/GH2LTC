@@ -13,9 +13,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.foundation.layout.*
@@ -26,6 +29,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -185,6 +189,7 @@ fun MainScreen(bleManager: BleManager) {
                 isConnected = connectionState == ConnectionState.CONNECTED,
                 deviceName = if (connectionState == ConnectionState.CONNECTED)
                     bleManager.deviceName.collectAsStateWithLifecycle().value else "TC-WL",
+                onTapTimecode = { showJamDialog = true },
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
@@ -206,7 +211,7 @@ fun MainScreen(bleManager: BleManager) {
 }
 
 @Composable
-fun TimecodeDisplay(timecode: Timecode, deviceName: String = "TC-WL", isConnected: Boolean = true, modifier: Modifier = Modifier) {
+fun TimecodeDisplay(timecode: Timecode, deviceName: String = "TC-WL", isConnected: Boolean = true, onTapTimecode: (() -> Unit)? = null, modifier: Modifier = Modifier) {
     val isLtcDevice = deviceName.contains("LTC", ignoreCase = true)
     BoxWithConstraints(
         modifier = modifier
@@ -265,7 +270,9 @@ fun TimecodeDisplay(timecode: Timecode, deviceName: String = "TC-WL", isConnecte
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = isConnected && onTapTimecode != null) { onTapTimecode?.invoke() },
                 )
             }
 
@@ -657,18 +664,22 @@ fun JamDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Jam Timecode") },
+        title = { Text("Set Timecode") },
         text = {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    horizontalArrangement = Arrangement.Center,
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     TcField("DD", dd) { dd = digitOnly(it, 99) }
-                    Text(":", style = MaterialTheme.typography.headlineSmall)
+                    Text(":", modifier = Modifier.padding(horizontal = 2.dp))
                     TcField("HH", hh) { hh = digitOnly(it, 23) }
-                    Text(":", style = MaterialTheme.typography.headlineSmall)
+                    Text(":", modifier = Modifier.padding(horizontal = 2.dp))
                     TcField("MM", mm) { mm = digitOnly(it, 59) }
-                    Text(":", style = MaterialTheme.typography.headlineSmall)
+                    Text(":", modifier = Modifier.padding(horizontal = 2.dp))
                     TcField("SS", ss) { ss = digitOnly(it, 59) }
-                    Text(".", style = MaterialTheme.typography.headlineSmall)
+                    Text(".", modifier = Modifier.padding(horizontal = 2.dp))
                     TcField("FF", ff) { ff = digitOnly(it, 59) }
                 }
                 Spacer(Modifier.height(8.dp))
@@ -698,12 +709,31 @@ fun JamDialog(
 
 @Composable
 private fun TcField(label: String, value: String, onValueChange: (String) -> Unit) {
+    var textFieldValue by remember { mutableStateOf(TextFieldValue(value)) }
+
+    LaunchedEffect(value) {
+        if (textFieldValue.text != value) {
+            textFieldValue = TextFieldValue(value)
+        }
+    }
+
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(label, style = MaterialTheme.typography.bodySmall)
         OutlinedTextField(
-            value = value,
-            onValueChange = onValueChange,
-            modifier = Modifier.width(56.dp),
+            value = textFieldValue,
+            onValueChange = { newValue: TextFieldValue ->
+                textFieldValue = newValue
+                onValueChange(newValue.text)
+            },
+            modifier = Modifier
+                .width(56.dp)
+                .onFocusChanged { state ->
+                    if (state.isFocused) {
+                        textFieldValue = textFieldValue.copy(
+                            selection = TextRange(0, textFieldValue.text.length)
+                        )
+                    }
+                },
             singleLine = true,
             textStyle = MaterialTheme.typography.bodyLarge.copy(
                 fontFamily = FontFamily.Monospace,

@@ -138,6 +138,16 @@ class BleManager(private val context: Context) {
                 _deviceState.value = state
             }
         }
+
+        override fun onCharacteristicWrite(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            status: Int,
+        ) {
+            if (characteristic.uuid == CONFIG_CHAR_UUID && status == BluetoothGatt.GATT_SUCCESS) {
+                gatt.readCharacteristic(characteristic)
+            }
+        }
     }
 
     fun startScan() {

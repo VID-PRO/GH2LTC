@@ -133,6 +133,23 @@ src/timecode/                  BLE HDMI (advertise/notify) & LTC (scan/select/co
 | Saved credentials exist | Connects as STA on boot; AP auto-disables on connect |
 | STA disconnected >5 s | AP re-enabled for reconfiguration |
 
+### Configuring WiFi
+
+You can set WiFi credentials through the **Web UI** (open `http://192.168.4.1` in AP mode) or the **Android companion app** over BLE — no WiFi connection needed.
+
+In the Android app's config drawer (bottom-right gear icon):
+
+| Control | BLE Command | Description |
+|---------|-------------|-------------|
+| **WiFi toggle** | `wifi:1` / `wifi:0` | Enables/disables the WiFi radio |
+| **SSID + Password fields** | `wifi_ssid:MyNetwork,password123` | Sets and saves credentials to NVS; device connects on next reboot |
+| **Save WiFi** (button) | — | Sends `wifi_ssid` with the entered `SSID,password` over BLE config characteristic |
+| **Forget WiFi** (button) | `wifi_forget:1` | Clears saved SSID/password from NVS |
+
+After saving credentials, the device stores them in NVS and reboots. On restart it connects as STA; if connection fails or the network is unavailable, the AP re-opens after 5 s for reconfiguration.
+
+The config drawer also reads the **device state** from the BLE config characteristic. The response format is `wifi=0|1|ssid=MyNetwork|ip=192.168.1.42|rssi=-65` (pipe-separated key=value pairs), so the app always shows the actual WiFi status, SSID, IP address, and signal strength from the device.
+
 ---
 
 ## Web Interface
