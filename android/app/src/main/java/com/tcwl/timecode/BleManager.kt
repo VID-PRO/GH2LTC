@@ -54,6 +54,9 @@ class BleManager(private val context: Context) {
     private var tcCharacteristic: BluetoothGattCharacteristic? = null
     private var configCharacteristic: BluetoothGattCharacteristic? = null
 
+    @Volatile
+    private var skipNextTcUpdate = false
+
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             val device = result.device
@@ -117,6 +120,10 @@ class BleManager(private val context: Context) {
             value: ByteArray,
         ) {
             if (characteristic.uuid == TC_CHAR_UUID && value.size >= 5) {
+                if (skipNextTcUpdate) {
+                    skipNextTcUpdate = false
+                    return
+                }
                 val tc = Timecode.fromBytes(value)
                 _timecode.value = tc
                 timecodeChannel.trySend(tc)
@@ -198,6 +205,11 @@ class BleManager(private val context: Context) {
         val gatt = bluetoothGatt ?: return
         val char = configCharacteristic ?: return
         gatt.readCharacteristic(char)
+    }
+
+    fun setTimecode(tc: Timecode) {
+        _timecode.value = tc
+        skipNextTcUpdate = true
     }
 
     fun sendConfig(cmd: String, value: String) {

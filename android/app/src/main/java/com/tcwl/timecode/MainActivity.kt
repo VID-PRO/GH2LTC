@@ -203,6 +203,7 @@ fun MainScreen(bleManager: BleManager) {
             onDismiss = { showJamDialog = false },
             onJam = { dd, hh, mm, ss, ff ->
                 bleManager.sendConfig("jam", "$dd $hh $mm $ss $ff")
+                bleManager.setTimecode(Timecode(dd = dd, hh = hh, mm = mm, ss = ss, ff = ff))
                 statusMsg = "Timecode jammed"
                 showJamDialog = false
             }
@@ -632,8 +633,21 @@ fun ConfigDrawer(
 
         }
 
+        if (connectionState == ConnectionState.CONNECTED) {
+            val fwVer = deviceState["fw"] ?: ""
+            if (fwVer.isNotEmpty()) {
+                Text(
+                    "FW $fwVer",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.Gray,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+
         Text(
-            "FW v1.4.6",
+            "v1.4.6",
             style = MaterialTheme.typography.bodySmall,
             color = Color.Gray,
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -729,9 +743,8 @@ private fun TcField(label: String, value: String, onValueChange: (String) -> Uni
                 .width(56.dp)
                 .onFocusChanged { state ->
                     if (state.isFocused) {
-                        textFieldValue = textFieldValue.copy(
-                            selection = TextRange(0, textFieldValue.text.length)
-                        )
+                        textFieldValue = TextFieldValue("")
+                        onValueChange("")
                     }
                 },
             singleLine = true,
