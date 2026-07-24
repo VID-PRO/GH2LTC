@@ -536,6 +536,13 @@ static void handleTcEditorInput() {
         if (_editField >= TC_FF) {
             ltc.setTime(_editVals[1], _editVals[2], _editVals[3], _editVals[4]);
             ltc.setDd(_editVals[0]);
+#if RTC_ENABLE
+            if (rtcPresent) {
+                rtc.setTime(_editVals[1], _editVals[2], _editVals[3]);
+                rtcHH = _editVals[1]; rtcMM = _editVals[2]; rtcSS = _editVals[3];
+                lastRtcSyncMs = millis();
+            }
+#endif
             _editingTc = false;
         } else {
             _editField = static_cast<TcEditField>(_editField + 1);
@@ -1576,6 +1583,13 @@ void setup() {
     webui.onJamTime([](uint8_t dd, uint8_t hh, uint8_t mm, uint8_t ss, uint8_t ff) {
         ltc.setTime(hh, mm, ss, ff);
         ltc.setDd(dd);
+#if RTC_ENABLE
+        if (rtcPresent) {
+            rtc.setTime(hh, mm, ss);
+            rtcHH = hh; rtcMM = mm; rtcSS = ss;
+            lastRtcSyncMs = millis();
+        }
+#endif
         Serial.printf("jam %02u:%02u:%02u:%02u:%02u\n", dd, hh, mm, ss, ff);
     });
 #if MAX7219_ENABLE
@@ -1666,6 +1680,13 @@ void setup() {
                 if (sscanf(val, "%u %u %u %u %u", &dd, &hh, &mm, &ss, &ff) >= 4) {
                     ltc.setTime(hh, mm, ss, ff);
                     ltc.setDd(dd);
+#if RTC_ENABLE
+                    if (rtcPresent) {
+                        rtc.setTime(hh, mm, ss);
+                        rtcHH = hh; rtcMM = mm; rtcSS = ss;
+                        lastRtcSyncMs = millis();
+                    }
+#endif
                 }
                 return true;
             }

@@ -14,6 +14,7 @@ import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.os.ParcelUuid
+import android.os.SystemClock
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -55,7 +56,7 @@ class BleManager(private val context: Context) {
     private var configCharacteristic: BluetoothGattCharacteristic? = null
 
     @Volatile
-    private var skipNextTcUpdate = false
+    private var suppressTcUntilMs = 0L
 
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
@@ -120,10 +121,7 @@ class BleManager(private val context: Context) {
             value: ByteArray,
         ) {
             if (characteristic.uuid == TC_CHAR_UUID && value.size >= 5) {
-                if (skipNextTcUpdate) {
-                    skipNextTcUpdate = false
-                    return
-                }
+                if (SystemClock.elapsedRealtime() < suppressTcUntilMs) return
                 val tc = Timecode.fromBytes(value)
                 _timecode.value = tc
                 timecodeChannel.trySend(tc)
@@ -209,7 +207,7 @@ class BleManager(private val context: Context) {
 
     fun setTimecode(tc: Timecode) {
         _timecode.value = tc
-        skipNextTcUpdate = true
+        suppressTcUntilMs = SystemClock.elapsedRealtime() + 300
     }
 
     fun sendConfig(cmd: String, value: String) {

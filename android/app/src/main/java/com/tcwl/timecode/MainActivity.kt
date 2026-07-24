@@ -202,8 +202,8 @@ fun MainScreen(bleManager: BleManager) {
             current = timecode,
             onDismiss = { showJamDialog = false },
             onJam = { dd, hh, mm, ss, ff ->
-                bleManager.sendConfig("jam", "$dd $hh $mm $ss $ff")
                 bleManager.setTimecode(Timecode(dd = dd, hh = hh, mm = mm, ss = ss, ff = ff))
+                bleManager.sendConfig("jam", "$dd $hh $mm $ss $ff")
                 statusMsg = "Timecode jammed"
                 showJamDialog = false
             }
@@ -724,10 +724,20 @@ fun JamDialog(
 @Composable
 private fun TcField(label: String, value: String, onValueChange: (String) -> Unit) {
     var textFieldValue by remember { mutableStateOf(TextFieldValue(value)) }
+    var isFocused by remember { mutableStateOf(false) }
 
     LaunchedEffect(value) {
         if (textFieldValue.text != value) {
             textFieldValue = TextFieldValue(value)
+        }
+    }
+
+    LaunchedEffect(isFocused) {
+        if (isFocused) {
+            withFrameMillis { }
+            textFieldValue = textFieldValue.copy(
+                selection = TextRange(0, textFieldValue.text.length)
+            )
         }
     }
 
@@ -742,10 +752,7 @@ private fun TcField(label: String, value: String, onValueChange: (String) -> Uni
             modifier = Modifier
                 .width(56.dp)
                 .onFocusChanged { state ->
-                    if (state.isFocused) {
-                        textFieldValue = TextFieldValue("")
-                        onValueChange("")
-                    }
+                    isFocused = state.isFocused
                 },
             singleLine = true,
             textStyle = MaterialTheme.typography.bodyLarge.copy(
